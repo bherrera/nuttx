@@ -35,7 +35,7 @@ before_install:
 
   # Download repo dependency at top level dir
   - cd ..
-  - git clone https://github.com/bherrera/nuttx_apps.git apps
+  - git clone https://bitbucket.org/nuttx/apps.git apps
   - cd -
 
 before_script:
@@ -43,7 +43,6 @@ before_script:
   - cd tools
   - ./configure.sh stm32f429i-disco/nsh
   - cd ..
-  - . ./setenv.sh
 
 script:
   - if [ "${COVERITY_SCAN_BRANCH}" != 1 ] ; then
