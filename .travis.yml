@@ -28,7 +28,7 @@ addons:
 
 before_install:
   - sudo apt-get -qq update
-  - sudo add-apt-repository -y ppa:terry.guo/gcc-arm-embedded
+  - sudo add-apt-repository -y --allow-unauthenticated ppa:terry.guo/gcc-arm-embedded
   - sudo apt-get -qq update
   - sudo apt-get -qq install gcc-arm-none-eabi
   - arm-none-eabi-gcc --version
