@@ -37,6 +37,7 @@ before_install:
 
 before_script:
   # Build stm32f429i-disco/nsh config
+  - make distclean
   - cd tools
   - ./configure.sh stm32f429i-disco/nsh
   - cd ..
