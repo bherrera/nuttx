@@ -12,10 +12,11 @@ env:
    - secure: "M9n5fclEZ8jvyaDYft4qTaJyJH5NwFETHAVhEHHPBD/1e5OjNNV9NaXUJgnZL0Pp+uDtS6SLQMxCkZYlUjgxidyUfTqJR/kTO85jVZQK+pv3wS+v9bnp4HIsUftJQ0uWWZoRaQJyjWPlQboTxOVyDNL57vvibij3ZnxhNYlKjZ12l/ASmQO4FSwSt2gIqHZ4Pz0Q8KtHxbObzPuUWyc9rCgziCcJpqiQI5svPPz61t8FlCKUHGQaKbAJXuiS07KaI0Tsd0BcD7JQzYFsaFBNZelVJa3SvThF25hSscxs1UhynzauNdMKwMzhMzI0y6F7pU/nFXAtJuGgbiuMgi35JWIiBtDvcHyEwdwXi8HvDWkg3uchVuHWiZNhaU7TVTb/u0epH14yux1Mp5pfmImVD7hPuzeMBx8YnPbq4sqYvzsU8gYnGuWXdgHEsZYPt1EcVf7mr5qnV78eqUZsP2sR8dvhHS70xQTqt9B3xcIQ3bfqetHlpFxLQjUPwOITqSryg5q3HilJCPxv2C3rygbnKgM2FFVRVDTmZ38v4VXM7BzklWrPVRlZshoMpYsDT+tqJCXoZ3bqEzkDk+0DkBPHnhJ88Wui5YgY4VE1fO5vJBVSbhqIJFYSonjCM3m4vFcnAtAAYR0F8XhBXtshLXUHYBS57UuVG0Jl0umeWGymVe4="
 
 addons:
-# Container infra is not recognizing gcc-arm-none-eabi
-#  apt:
-#    packages:
-#      - gcc-arm-none-eabi
+  apt:
+    sources:
+      - debian-sid
+    packages:
+      - gcc-arm-none-eabi
 
   coverity_scan:
     project:
@@ -27,10 +28,6 @@ addons:
     branch_pattern: coverity_scan
 
 before_install:
-  - sudo apt-get -qq update
-  - sudo add-apt-repository -y --allow-unauthenticated ppa:terry.guo/gcc-arm-embedded
-  - sudo apt-get -qq update
-  - sudo apt-get -qq install gcc-arm-none-eabi
   - arm-none-eabi-gcc --version
 
   # Download repo dependency at top level dir
