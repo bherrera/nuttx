@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 # configure.sh
 #
 #   Copyright (C) 2007, 2008, 2011, 2015, 2017 Gregory Nutt. All rights reserved.
