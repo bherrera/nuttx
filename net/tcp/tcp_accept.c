@@ -88,7 +88,7 @@ struct accept_s
  *   None
  *
  * Assumptions:
- *   Running at the interrupt level
+ *   The network is locked
  *
  ****************************************************************************/
 
@@ -145,7 +145,7 @@ static inline void accept_tcpsender(FAR struct socket *psock,
 #endif /* CONFIG_NET_TCP */
 
 /****************************************************************************
- * Name: accept_interrupt
+ * Name: accept_eventhandler
  *
  * Description:
  *   Receive interrupt level callbacks when connections occur
@@ -158,12 +158,12 @@ static inline void accept_tcpsender(FAR struct socket *psock,
  *   None
  *
  * Assumptions:
- *   Running at the interrupt level
+ *   The network is locked
  *
  ****************************************************************************/
 
-static int accept_interrupt(FAR struct tcp_conn_s *listener,
-                            FAR struct tcp_conn_s *conn)
+static int accept_eventhandler(FAR struct tcp_conn_s *listener,
+                               FAR struct tcp_conn_s *conn)
 {
   struct accept_s *pstate = (struct accept_s *)listener->accept_private;
   int ret = -EINVAL;
@@ -291,7 +291,7 @@ int psock_tcp_accept(FAR struct socket *psock, FAR struct sockaddr *addr,
       /* Set up the callback in the connection */
 
       conn->accept_private  = (FAR void *)&state;
-      conn->accept          = accept_interrupt;
+      conn->accept          = accept_eventhandler;
 
       /* Wait for the send to complete or an error to occur:  NOTES: (1)
        * net_lockedwait will also terminate if a signal is received, (2)

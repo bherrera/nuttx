@@ -52,7 +52,7 @@
 #include "stm32l4_pwm.h"
 #include "nucleo-l432kc.h"
 
-#ifdef CONFIG_STM32_ADC1
+#ifdef CONFIG_STM32L4_ADC1
 
 /************************************************************************************
  * Pre-processor Definitions
@@ -73,20 +73,20 @@
 
 #ifdef CONFIG_ADC_DMA
 
-static const uint8_t  g_adc1_chanlist[ADC1_NCHANNELS] = {0, 1};
+static const uint8_t  g_adc1_chanlist[ADC1_NCHANNELS] = {1, 2};
 
 /* Configurations of pins used byte each ADC channels */
 
-static const uint32_t g_adc1_pinlist[ADC1_NCHANNELS]  = {GPIO_ADC1_IN0, GPIO_ADC1_IN0};
+static const uint32_t g_adc1_pinlist[ADC1_NCHANNELS]  = {GPIO_ADC1_IN1, GPIO_ADC1_IN2};
 
 #else
 /* Without DMA, only a single channel can be supported */
 
-static const uint8_t  g_adc1_chanlist[ADC1_NCHANNELS] = {0};
+static const uint8_t  g_adc1_chanlist[ADC1_NCHANNELS] = {1};
 
 /* Configurations of pins used byte each ADC channels */
 
-static const uint32_t g_adc1_pinlist[ADC1_NCHANNELS]  = {GPIO_ADC1_IN0};
+static const uint32_t g_adc1_pinlist[ADC1_NCHANNELS]  = {GPIO_ADC1_IN1};
 
 #endif /* CONFIG_ADC_DMA */
 
@@ -99,14 +99,14 @@ static const uint32_t g_adc1_pinlist[ADC1_NCHANNELS]  = {GPIO_ADC1_IN0};
  ************************************************************************************/
 
 /************************************************************************************
- * Name: stm32_adc_setup
+ * Name: stm32l4_adc_setup
  *
  * Description:
  *   Initialize ADC and register the ADC driver.
  *
  ************************************************************************************/
 
-int stm32_adc_setup(void)
+int stm32l4_adc_setup(void)
 {
   struct adc_dev_s *adc;
   int ret;
@@ -116,12 +116,12 @@ int stm32_adc_setup(void)
 
   for (i = 0; i < ADC1_NCHANNELS; i++)
     {
-      stm32_configgpio(g_adc1_pinlist[i]);
+      stm32l4_configgpio(g_adc1_pinlist[i]);
     }
 
-  /* Call stm32_adcinitialize() to get an instance of the ADC interface */
+  /* Call stm32l4_adc_initialize() to get an instance of the ADC interface */
 
-  adc = stm32_adcinitialize(1, g_adc1_chanlist, ADC1_NCHANNELS);
+  adc = stm32l4_adc_initialize(1, g_adc1_chanlist, ADC1_NCHANNELS);
   if (adc == NULL)
     {
       aerr("ERROR: Failed to get ADC interface\n");
@@ -140,4 +140,4 @@ int stm32_adc_setup(void)
   return OK;
 }
 
-#endif /* CONFIG_STM32_ADC1 */
+#endif /* CONFIG_STM32L4_ADC1 */

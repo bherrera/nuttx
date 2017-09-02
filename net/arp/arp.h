@@ -128,7 +128,7 @@ struct arp_iphdr_s
 
 #ifdef CONFIG_NET_ARP_SEND
 /* This structure holds the state of the send operation until it can be
- * operated upon from the interrupt level.
+ * operated upon from the network driver poll.
  */
 
 struct arp_send_s
@@ -279,8 +279,7 @@ int arp_send(in_addr_t ipaddr);
  *
  * Assumptions:
  *   This function is called from the MAC device driver indirectly through
- *   devif_poll() and devif_timer() and may be called from the timer
- *   interrupt/watchdog handler level.
+ *   devif_poll() and devif_timer().  The network must be locked.
  *
  ****************************************************************************/
 
@@ -379,8 +378,8 @@ void arp_notify(in_addr_t ipaddr);
  *   ipaddr - Refers to an IP address in network order
  *
  * Assumptions
- *   Interrupts are disabled; Returned value will become unstable when
- *   interrupts are re-enabled or if any other network APIs are called.
+ *   The network is locked; Returned value will become unstable when the
+ *   network is unlocked or if any other network APIs are called.
  *
  ****************************************************************************/
 

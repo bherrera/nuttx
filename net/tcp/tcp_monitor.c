@@ -302,11 +302,12 @@ int tcp_start_monitor(FAR struct socket *psock)
  * Name: tcp_stop_monitor
  *
  * Description:
- *   Stop monitoring TCP connection changes for a given socket.  This is part
- *   of a graceful shutdown.
+ *   Stop monitoring TCP connection changes for a sockets associated with
+ *   a given TCP connection stucture.
  *
  * Input Parameters:
  *   conn - The TCP connection of interest
+ *   flags    Set of disconnection events
  *
  * Returned Value:
  *   None
@@ -317,24 +318,97 @@ int tcp_start_monitor(FAR struct socket *psock)
  *
  ****************************************************************************/
 
-void tcp_stop_monitor(FAR struct tcp_conn_s *conn)
+void tcp_stop_monitor(FAR struct tcp_conn_s *conn, uint16_t flags)
 {
   DEBUGASSERT(conn != NULL);
 
   /* Stop the network monitor */
 
-  tcp_shutdown_monitor(conn, TCP_CLOSE);
+  tcp_shutdown_monitor(conn, flags);
+}
+
+/****************************************************************************
+ * Name: tcp_close_monitor
+ *
+ * Description:
+ *   One socket in a group of dup'ed sockets has been closed.  We need to
+ *   selectively terminate just those things that are waiting of events
+ *   from this specific socket.  And also recover any resources that are
+ *   committed to monitoring this socket.
+ *
+ * Input Parameters:
+ *   psock - The TCP socket structure that is closed
+ *
+ * Returned Value:
+ *   None
+ *
+ * Assumptions:
+ *   The caller holds the network lock (if not, it will be locked momentarily
+ *   by this function).
+ *
+ ****************************************************************************/
+
+void tcp_close_monitor(FAR struct socket *psock)
+{
+  FAR struct tcp_conn_s *conn;
+  FAR struct devif_callback_s *cb;
+
+  DEBUGASSERT(psock != NULL && psock->s_conn != NULL);
+  conn = (FAR struct tcp_conn_s *)psock->s_conn;
+
+  /* Find and free the the connection event callback */
+
+  net_lock();
+  for (cb = conn->connevents;
+       cb != NULL && cb->priv != (FAR void *)psock;
+       cb = cb->nxtconn)
+    {
+    }
+
+  if (cb != NULL)
+    {
+      devif_conn_callback_free(conn->dev, cb, &conn->connevents);
+    }
+
+  /* Make sure that this socket is explicitly marked as closed */
+
+  tcp_close_connection(psock, TCP_CLOSE);
+
+  /* Now notify any sockets waiting for events from this particular sockets.
+   * Other dup'ed sockets sharing the same connection must not be effected.
+   */
+
+  /* REVISIT:  The following logic won't work:  There is no way to compare
+   * psocks to check for a match.  This missing logic could only be an issue
+   * if the same socket were being used on one thread, but then closed on
+   * another.  Some redesign would be required to find only those event
+   * handlers that are waiting specifically for this socket (vs. a dup of
+   * this socket)
+   */
+
+#if 0
+  for (cb = conn->list; cb != NULL; cb = cb->nxtconn)
+    {
+      if (cb->event != NULL && (cb->flags & TCP_CLOSE) != 0)
+        {
+          (void)cb->event(conn->dev, conn, cb->priv, TCP_CLOSE);
+        }
+    }
+#endif
 }
 
 /****************************************************************************
  * Name: tcp_lost_connection
  *
  * Description:
- *   Called when a loss-of-connection event has occurred.  This is for an
- *   unexpected disconnection of some sort from the host.
+ *   Called when a loss-of-connection event has been detected by network
+ *   event handling logic.  Perform operations like tcp_stop_monitor but (1)
+ *   explicitly mark this socket and (2) disable further callbacks the to the
+ *   event handler.
  *
  * Parameters:
- *   psock - The TCP socket structure associated.
+ *   psock - The TCP socket structure whose connection was lost.
+ *   cb    - devif callback structure
  *   flags - Set of connection events events
  *
  * Returned Value:
@@ -346,11 +420,26 @@ void tcp_stop_monitor(FAR struct tcp_conn_s *conn)
  *
  ****************************************************************************/
 
-void tcp_lost_connection(FAR struct socket *psock, uint16_t flags)
+void tcp_lost_connection(FAR struct socket *psock,
+                         FAR struct devif_callback_s *cb, uint16_t flags)
 {
   DEBUGASSERT(psock != NULL && psock->s_conn != NULL);
 
-  /* Stop the network monitor */
+  /* Nullify the callback structure so that recursive callbacks are not
+   * received by the event handler due to disconnection processing.
+   */
+
+  cb->flags = 0;
+  cb->priv  = NULL;
+  cb->event = NULL;
+
+  /* Make sure that this socket is explicitly marked.  It may not get a
+   * callback due to the above nullification.
+   */
+
+  tcp_close_connection(psock, flags);
+
+  /* Then stop the network monitor for all sockets. */
 
   tcp_shutdown_monitor((FAR struct tcp_conn_s *)psock->s_conn, flags);
 }

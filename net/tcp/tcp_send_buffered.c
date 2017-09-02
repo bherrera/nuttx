@@ -121,7 +121,7 @@
  *   None
  *
  * Assumptions:
- *   Running at the interrupt level
+ *   The network is locked
  *
  ****************************************************************************/
 
@@ -223,7 +223,7 @@ static inline void psock_lost_connection(FAR struct socket *psock,
  *   None
  *
  * Assumptions:
- *   Running at the interrupt level
+ *   The network is locked
  *
  ****************************************************************************/
 
@@ -275,7 +275,7 @@ static inline void send_ipselect(FAR struct net_driver_s *dev,
  *          the network device is not Ethernet).
  *
  * Assumptions:
- *   Running at the interrupt level
+ *   The network is locked
  *
  ****************************************************************************/
 
@@ -321,7 +321,7 @@ static inline bool psock_send_addrchck(FAR struct tcp_conn_s *conn)
 #endif /* CONFIG_NET_ETHERNET */
 
 /****************************************************************************
- * Name: psock_send_interrupt
+ * Name: psock_send_eventhandler
  *
  * Description:
  *   This function is called from the interrupt level to perform the actual
@@ -336,13 +336,13 @@ static inline bool psock_send_addrchck(FAR struct tcp_conn_s *conn)
  *   None
  *
  * Assumptions:
- *   Running at the interrupt level
+ *   The network is locked
  *
  ****************************************************************************/
 
-static uint16_t psock_send_interrupt(FAR struct net_driver_s *dev,
-                                     FAR void *pvconn, FAR void *pvpriv,
-                                     uint16_t flags)
+static uint16_t psock_send_eventhandler(FAR struct net_driver_s *dev,
+                                        FAR void *pvconn, FAR void *pvpriv,
+                                        uint16_t flags)
 {
   FAR struct tcp_conn_s *conn = (FAR struct tcp_conn_s *)pvconn;
   FAR struct socket *psock = (FAR struct socket *)pvpriv;
@@ -515,7 +515,7 @@ static uint16_t psock_send_interrupt(FAR struct net_driver_s *dev,
         {
           /* Report not connected */
 
-          tcp_lost_connection(psock, flags);
+          tcp_lost_connection(psock, psock->s_sndcb, flags);
         }
 
       /* Free write buffers and terminate polling */
@@ -1030,14 +1030,14 @@ ssize_t psock_tcp_send(FAR struct socket *psock, FAR const void *buf,
 
       /* Allocate resources to receive a callback */
 
-      if (!psock->s_sndcb)
+      if (psock->s_sndcb == NULL)
         {
           psock->s_sndcb = tcp_callback_alloc(conn);
         }
 
       /* Test if the callback has been allocated */
 
-      if (!psock->s_sndcb)
+      if (psock->s_sndcb == NULL)
         {
           /* A buffer allocation error occurred */
 
@@ -1051,7 +1051,7 @@ ssize_t psock_tcp_send(FAR struct socket *psock, FAR const void *buf,
       psock->s_sndcb->flags = (TCP_ACKDATA | TCP_REXMIT | TCP_POLL |
                                TCP_DISCONN_EVENTS);
       psock->s_sndcb->priv  = (FAR void *)psock;
-      psock->s_sndcb->event = psock_send_interrupt;
+      psock->s_sndcb->event = psock_send_eventhandler;
 
       /* Initialize the write buffer */
 
@@ -1063,7 +1063,7 @@ ssize_t psock_tcp_send(FAR struct socket *psock, FAR const void *buf,
 
       WRB_DUMP("I/O buffer chain", wrb, WRB_PKTLEN(wrb), 0);
 
-      /* psock_send_interrupt() will send data in FIFO order from the
+      /* psock_send_eventhandler() will send data in FIFO order from the
        * conn->write_q
        */
 

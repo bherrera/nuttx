@@ -62,6 +62,15 @@
  * Description:
  *   Performs the low level, common portion of net_dupsd() and net_dupsd2()
  *
+ * Input Parameters:
+ *   psock1 - The existing socket that is being cloned.
+ *   psock2 - A reference to an uninitialized socket structure alloated by
+ *            the caller.
+ *
+ * Returned Value:
+ *   Zero (OK) is returned on success; a negated errno value is returned on
+ *   any failure.
+ *
  ****************************************************************************/
 
 int net_clone(FAR struct socket *psock1, FAR struct socket *psock2)
@@ -109,7 +118,10 @@ int net_clone(FAR struct socket *psock1, FAR struct socket *psock2)
    * is lost.
    */
 
-  ret = tcp_start_monitor(psock2);
+  if (psock2->s_type == SOCK_STREAM)
+    {
+      ret = tcp_start_monitor(psock2);
+    }
 #endif
 
   net_unlock();

@@ -70,11 +70,11 @@ struct tcp_poll_s
  ****************************************************************************/
 
 /****************************************************************************
- * Name: tcp_poll_interrupt
+ * Name: tcp_poll_eventhandler
  *
  * Description:
- *   This function is called from the interrupt level to perform the actual
- *   TCP receive operation via by the device interface layer.
+ *   This function is called to perform the actual TCP receive operation via
+ *   the device interface layer.
  *
  * Parameters:
  *   dev      The structure of the network driver that caused the interrupt
@@ -85,12 +85,13 @@ struct tcp_poll_s
  *   None
  *
  * Assumptions:
- *   Running at the interrupt level
+ *   The network is locked
  *
  ****************************************************************************/
 
-static uint16_t tcp_poll_interrupt(FAR struct net_driver_s *dev, FAR void *conn,
-                                   FAR void *pvpriv, uint16_t flags)
+static uint16_t tcp_poll_eventhandler(FAR struct net_driver_s *dev,
+                                      FAR void *conn,
+                                      FAR void *pvpriv, uint16_t flags)
 {
   FAR struct tcp_poll_s *info = (FAR struct tcp_poll_s *)pvpriv;
 
@@ -124,14 +125,20 @@ static uint16_t tcp_poll_interrupt(FAR struct net_driver_s *dev, FAR void *conn,
         {
           /* Mark that the connection has been lost */
 
-          tcp_lost_connection(info->psock, flags);
+          tcp_lost_connection(info->psock, info->cb, flags);
           eventset |= (POLLERR | POLLHUP);
         }
 
       /* Awaken the caller of poll() if requested event occurred. */
 
-      if (eventset)
+      if (eventset != 0)
         {
+          /* Stop further callbacks */
+
+          info->cb->flags   = 0;
+          info->cb->priv    = NULL;
+          info->cb->event   = NULL;
+
           info->fds->revents |= eventset;
           sem_post(info->fds->sem);
         }
@@ -210,7 +217,7 @@ int tcp_pollsetup(FAR struct socket *psock, FAR struct pollfd *fds)
 
   cb->flags    = (TCP_NEWDATA | TCP_BACKLOG | TCP_POLL | TCP_DISCONN_EVENTS);
   cb->priv     = (FAR void *)info;
-  cb->event    = tcp_poll_interrupt;
+  cb->event    = tcp_poll_eventhandler;
 
   /* Save the reference in the poll info structure as fds private as well
    * for use during poll teardown as well.

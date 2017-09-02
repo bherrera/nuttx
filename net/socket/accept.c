@@ -139,13 +139,15 @@ int psock_accept(FAR struct socket *psock, FAR struct sockaddr *addr,
   if (psock == NULL || psock->s_conn == NULL)
     {
       nerr("ERROR: Socket invalid or not opened\n");
-      return -EINVAL;
+      errcode = EINVAL;
+      goto errout;
     }
 
   /* Is the socket listening for a connection? */
 
   if (!_SS_ISLISTENING(psock->s_flags))
     {
+      nerr("ERROR: Socket is not listening for a connection.\n");
       errcode = EINVAL;
       goto errout;
     }
@@ -153,21 +155,27 @@ int psock_accept(FAR struct socket *psock, FAR struct sockaddr *addr,
   /* Let the address family's accept() method handle the operation */
 
   DEBUGASSERT(psock->s_sockif != NULL && psock->s_sockif->si_accept != NULL);
+
+  net_lock();
   ret = psock->s_sockif->si_accept(psock, addr, addrlen, newsock);
   if (ret < 0)
     {
       nerr("ERROR: si_accept failed: %d\n", ret);
       errcode = -ret;
-      goto errout;
+      goto errout_with_lock;
     }
 
   /* Mark the new socket as connected. */
 
   newsock->s_flags |= _SF_CONNECTED;
   newsock->s_flags &= ~_SF_CLOSED;
+  net_unlock();
 
   leave_cancellation_point();
   return OK;
+
+errout_with_lock:
+  net_unlock();
 
 errout:
   set_errno(errcode);

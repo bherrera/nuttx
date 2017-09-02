@@ -127,7 +127,7 @@ struct sendfile_s
  *   TRUE:timeout FALSE:no timeout
  *
  * Assumptions:
- *   Running at the interrupt level
+ *   The network is locked
  *
  ****************************************************************************/
 
@@ -154,8 +154,9 @@ static inline int sendfile_timeout(FAR struct sendfile_s *pstate)
 }
 #endif /* CONFIG_NET_SOCKOPTS */
 
-static uint16_t ack_interrupt(FAR struct net_driver_s *dev, FAR void *pvconn,
-                              FAR void *pvpriv, uint16_t flags)
+static uint16_t ack_eventhandler(FAR struct net_driver_s *dev,
+                                 FAR void *pvconn,
+                                 FAR void *pvpriv, uint16_t flags)
 {
   FAR struct sendfile_s *pstate = (FAR struct sendfile_s *)pvpriv;
 
@@ -222,13 +223,19 @@ static uint16_t ack_interrupt(FAR struct net_driver_s *dev, FAR void *pvconn,
 
   else if ((flags & TCP_DISCONN_EVENTS) != 0)
     {
-      /* Report not connected */
-
       nwarn("WARNING: Lost connection\n");
 
-      tcp_lost_connection(pstate->snd_sock, flags);
+      /* Report not connected */
+
+      tcp_lost_connection(pstate->snd_sock, pstate->snd_ackcb, flags);
       pstate->snd_sent = -ENOTCONN;
     }
+
+  /* Prohibit further callbacks */
+
+  pstate->snd_ackcb->flags = 0;
+  pstate->snd_ackcb->priv  = NULL;
+  pstate->snd_ackcb->event = NULL;
 
   /* Wake up the waiting thread */
 
@@ -262,7 +269,7 @@ static uint16_t ack_interrupt(FAR struct net_driver_s *dev, FAR void *pvconn,
  *   None
  *
  * Assumptions:
- *   Running at the interrupt level
+ *   The network is locked
  *
  ****************************************************************************/
 
@@ -301,7 +308,7 @@ static inline bool sendfile_addrcheck(FAR struct tcp_conn_s *conn)
 #endif /* CONFIG_NET_ETHERNET */
 
 /****************************************************************************
- * Name: sendfile_interrupt
+ * Name: sendfile_eventhandler
  *
  * Description:
  *   This function is called from the interrupt level to perform the actual
@@ -316,12 +323,13 @@ static inline bool sendfile_addrcheck(FAR struct tcp_conn_s *conn)
  *   None
  *
  * Assumptions:
- *   Running at the interrupt level
+ *   The network is locked
  *
  ****************************************************************************/
 
-static uint16_t sendfile_interrupt(FAR struct net_driver_s *dev, FAR void *pvconn,
-                                   FAR void *pvpriv, uint16_t flags)
+static uint16_t sendfile_eventhandler(FAR struct net_driver_s *dev,
+                                      FAR void *pvconn, FAR void *pvpriv,
+                                      uint16_t flags)
 {
   FAR struct tcp_conn_s *conn = (FAR struct tcp_conn_s *)pvconn;
   FAR struct sendfile_s *pstate = (FAR struct sendfile_s *)pvpriv;
@@ -344,11 +352,11 @@ static uint16_t sendfile_interrupt(FAR struct net_driver_s *dev, FAR void *pvcon
 
   if ((flags & TCP_DISCONN_EVENTS) != 0)
     {
-      /* Report not connected */
-
       nwarn("WARNING: Lost connection\n");
 
-      tcp_lost_connection(pstate->snd_sock, flags);
+      /* Report not connected */
+
+      tcp_lost_connection(pstate->snd_sock, pstate->snd_datacb, flags);
       pstate->snd_sent = -ENOTCONN;
       goto end_wait;
     }
@@ -661,7 +669,7 @@ ssize_t tcp_sendfile(FAR struct socket *psock, FAR struct file *infile,
 
   state.snd_ackcb->flags = (TCP_ACKDATA | TCP_REXMIT | TCP_DISCONN_EVENTS);
   state.snd_ackcb->priv  = (FAR void *)&state;
-  state.snd_ackcb->event = ack_interrupt;
+  state.snd_ackcb->event = ack_eventhandler;
 
   /* Perform the TCP send operation */
 
@@ -669,7 +677,7 @@ ssize_t tcp_sendfile(FAR struct socket *psock, FAR struct file *infile,
     {
       state.snd_datacb->flags = TCP_POLL;
       state.snd_datacb->priv  = (FAR void *)&state;
-      state.snd_datacb->event = sendfile_interrupt;
+      state.snd_datacb->event = sendfile_eventhandler;
 
       /* Notify the device driver of the availability of TX data */
 

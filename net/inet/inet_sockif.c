@@ -741,6 +741,9 @@ static int inet_connect(FAR struct socket *psock,
  *   Returns 0 (OK) on success.  On failure, it returns a negated errno
  *   value.  See accept() for a desrciption of the approriate error value.
  *
+ * Assumptions:
+ *   The network is locked.
+ *
  ****************************************************************************/
 
 static int inet_accept(FAR struct socket *psock, FAR struct sockaddr *addr,
@@ -754,7 +757,7 @@ static int inet_accept(FAR struct socket *psock, FAR struct sockaddr *addr,
 
   if (psock->s_type != SOCK_STREAM)
     {
-      nerr("ERROR:  Inappropreat socket type: %d\n", psock->s_type);
+      nerr("ERROR:  Inappropriate socket type: %d\n", psock->s_type);
       return -EOPNOTSUPP;
     }
 
@@ -810,14 +813,15 @@ static int inet_accept(FAR struct socket *psock, FAR struct sockaddr *addr,
 
 #ifdef CONFIG_NET_TCP
 #ifdef NET_TCP_HAVE_STACK
-  /* Perform the local accept operation (with the network locked) */
+  /* Perform the local accept operation (the network locked must be locked
+   * by the caller).
+   */
 
-  net_lock();
   ret = psock_tcp_accept(psock, addr, addrlen, &newsock->s_conn);
   if (ret < 0)
     {
       nerr("ERROR: psock_tcp_accept failed: %d\n", ret);
-      goto errout_with_lock;
+      return ret;
     }
 
    /* Begin monitoring for TCP connection events on the newly connected
@@ -832,23 +836,17 @@ static int inet_accept(FAR struct socket *psock, FAR struct sockaddr *addr,
        * everything we have done and return a failure.
        */
 
-      goto errout_after_accept;
+      psock_close(newsock);
+      return ret;
     }
 
-  net_unlock();
   return OK;
-
-errout_after_accept:
-  psock_close(newsock);
-
-errout_with_lock:
-  net_unlock();
-  return ret;
 
 #else
   nwarn("WARNING: SOCK_STREAM not supported in this configuration\n");
   return -EOPNOTSUPP;
 #endif /* NET_TCP_HAVE_STACK */
+
 #else
   nwarn("WARNING: TCP/IP not supported in this configuration\n");
   return -EOPNOTSUPP;

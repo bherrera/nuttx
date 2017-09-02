@@ -523,7 +523,7 @@ int tcp_connect(FAR struct tcp_conn_s *conn, FAR const struct sockaddr *addr);
  *   None
  *
  * Assumptions:
- *   Running at the interrupt level
+ *   The network is locked
  *
  ****************************************************************************/
 
@@ -557,10 +557,12 @@ int tcp_start_monitor(FAR struct socket *psock);
  * Name: tcp_stop_monitor
  *
  * Description:
- *   Stop monitoring TCP connection changes for a given socket
+ *   Stop monitoring TCP connection changes for a sockets associated with
+ *   a given TCP connection stucture.
  *
  * Input Parameters:
  *   conn - The TCP connection of interest
+ *   flags    Set of disconnection events
  *
  * Returned Value:
  *   None
@@ -571,27 +573,56 @@ int tcp_start_monitor(FAR struct socket *psock);
  *
  ****************************************************************************/
 
-void tcp_stop_monitor(FAR struct tcp_conn_s *conn);
+void tcp_stop_monitor(FAR struct tcp_conn_s *conn, uint16_t flags);
 
 /****************************************************************************
- * Name: tcp_lost_connection
+ * Name: tcp_close_monitor
  *
  * Description:
- *   Called when a loss-of-connection event has occurred.
+ *   One socket in a group of dup'ed sockets has been closed.  We need to
+ *   selectively terminate just those things that are waiting of events
+ *   from this specific socket.  And also recover any resources that are
+ *   committed to monitoring this socket.
  *
- * Parameters:
- *   psock    The TCP socket structure associated.
- *   flags    Set of connection events events
+ * Input Parameters:
+ *   psock - The TCP socket structure that is closed
  *
  * Returned Value:
  *   None
  *
  * Assumptions:
- *   The caller holds the network lock.
+ *   The caller holds the network lock (if not, it will be locked momentarily
+ *   by this function).
  *
  ****************************************************************************/
 
-void tcp_lost_connection(FAR struct socket *psock, uint16_t flags);
+void tcp_close_monitor(FAR struct socket *psock);
+
+/****************************************************************************
+ * Name: tcp_lost_connection
+ *
+ * Description:
+ *   Called when a loss-of-connection event has been detected by network
+ *   event handling logic.  Perform operations like tcp_stop_monitor but
+ *   (1) explicitly mark this socket and (2) disable further callbacks
+ *   the event handler.
+ *
+ * Parameters:
+ *   psock - The TCP socket structure associated.
+ *   cb    - devif callback structure
+ *   flags - Set of connection events events
+ *
+ * Returned Value:
+ *   None
+ *
+ * Assumptions:
+ *   The caller holds the network lock (if not, it will be locked momentarily
+ *   by this function).
+ *
+ ****************************************************************************/
+
+void tcp_lost_connection(FAR struct socket *psock,
+                         FAR struct devif_callback_s *cb, uint16_t flags);
 
 /****************************************************************************
  * Name: tcp_ipv4_select
@@ -746,7 +777,7 @@ void tcp_listen_initialize(void);
  *   Return the connection listener for connections on this port (if any)
  *
  * Assumptions:
- *   Called at interrupt level
+ *   The network is locked
  *
  ****************************************************************************/
 
@@ -1043,7 +1074,7 @@ uint16_t tcp_datahandler(FAR struct tcp_conn_s *conn, FAR uint8_t *buffer,
  *   the listen arguments.
  *
  * Assumptions:
- *   Called from normal user code. Interrupts may be disabled.
+ *   Called from network socket logic.  The network may or may not be locked.
  *
  ****************************************************************************/
 
@@ -1064,7 +1095,7 @@ int tcp_backlogcreate(FAR struct tcp_conn_s *conn, int nblg);
  *   is freed that has pending connections.
  *
  * Assumptions:
- *   Called from network stack logic with the network stack locked
+ *   Called from network socket logic with the network stack locked
  *
  ****************************************************************************/
 
@@ -1098,11 +1129,11 @@ int tcp_backlogadd(FAR struct tcp_conn_s *conn,
  * Name: tcp_backlogavailable
  *
  * Description:
- *  Called from poll().  Before waiting for a new connection, poll will
- *  call this API to see if there are pending connections in the backlog.
+ *   Called from poll().  Before waiting for a new connection, poll will
+ *   call this API to see if there are pending connections in the backlog.
  *
  * Assumptions:
- *   Called from normal user code, but with interrupts disabled,
+ *   Thne network is locked.
  *
  ****************************************************************************/
 
@@ -1116,11 +1147,11 @@ bool tcp_backlogavailable(FAR struct tcp_conn_s *conn);
  * Name: tcp_backlogremove
  *
  * Description:
- *  Called from accept().  Before waiting for a new connection, accept will
- *  call this API to see if there are pending connections in the backlog.
+ *   Called from accept().  Before waiting for a new connection, accept will
+ *   call this API to see if there are pending connections in the backlog.
  *
  * Assumptions:
- *   Called from normal user code, but with interrupts disabled,
+ *   The network is locked.
  *
  ****************************************************************************/
 
@@ -1258,9 +1289,6 @@ ssize_t psock_tcp_send(FAR struct socket *psock, FAR const void *buf,
  *     An invalid descriptor was specified.
  *   -ENOTCONN
  *     The socket is not connected.
- *
- * Assumptions:
- *   Not running at the interrupt level
  *
  ****************************************************************************/
 
