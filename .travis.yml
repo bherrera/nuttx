@@ -19,12 +19,7 @@ addons:
 
     # Commands to prepare for build_command
     # ** likely specific to your build **
-    build_command_prepend:
-    - git submodule update --quiet --init --recursive
-    - make distclean
-    - cd tools
-    - ./configure.sh stm32f429i-disco/nsh
-    - cd ..
+    build_command_prepend: make distclean; cd tools; ./configure.sh stm32f429i-disco/nsh; cd ..
 
     # The command that will be added as an argument to "cov-build" to compile your project for analysis,
     # ** likely specific to your build **
@@ -55,7 +50,6 @@ before_script:
 - ./configure.sh stm32f429i-disco/nsh
 - cd ..
 script:
-- git submodule update --quiet --init --recursive
 - make
 env:
   global:
