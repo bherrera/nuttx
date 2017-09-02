@@ -10,7 +10,7 @@ addons:
     # GitHub project metadata
     # ** specific to your project **
     project:
-      name: bherrera/NuttX
+      name: bherrera/nuttx
       version: 1.0
       description: NuttX clone to run coverity
 
@@ -31,6 +31,7 @@ addons:
     branch_pattern: coverity
 
 before_install:
+- echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
 - sudo apt-get -qq update
 - sudo apt-get install -y git gperf flex bison libncurses5-dev
 - cd ..
@@ -53,4 +54,6 @@ script:
 - make
 env:
   global:
-    secure: gBrnL0LtAFb3QdfIIXVmSzI8Sl69lLpuLXaRNt7FKbw76D8X9sCdPP+/hU4ySlRqe51HFTNtsbFwQAFdRpaGBN6ukdUXoImJiXTaV4SssRe29VhS8t11bN8o0xK/EzAvhKDGKhZ5+f76n3xTVUWcsuslo+ImSd0c5vdg1v1kP9LjPVOfIVd1iw++S5XFq/71kxLb1pNE/y4a0j7dixwLulHKVLOu6gQ5FZYQAnKlPBkfDzVwJMDktFlVE35Tgh79nAv5eLcMReJmBRkh5+7tm41cg59z8mlJFUde04ue+MqNQNfi/Ae2CgMrXIQSBK/iWagM9DxNSm33c2nU5YQhl9nQNQTOrehXdYevSAJY9/HOB9y5ckUYZpAr8bGB7RteOK/fkosofg3CNMkZqHF1VPI3WHFlHoLQ7nvw3I17AZBzUS2/sb3nnMdJj2Zf7sL4DxKcQPaNJ5Em73Xr6pVqGvpKSt4I91QE0nMQOOqLu0vdci44EG+0oYoYEuDHk5L/n/PqrqCE4L8IYo0LRx64TVvmsWON2nahV6TezeS1nSgvNAMhY5vdpr81p+jlShJ0o0LWwVZKmDj0PxcUFybgpBFI6jRc1YvT8KI0IxpuVwdH8m0WNYfGS+pjja5ApvgRn9dex8KsC1Ii2VIyuGiPHdTHQRpPq8vD5YxuK6axbRg=
+   # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
+   #   via the "travis encrypt" command using the project repo's public key
+   - secure: "tQJioxUeMpLbIfgaZ/if8cuGx1fgNX5D+/W8tg4aChdXHL1YQdQdRdjH/d3SFGQXnPP3ZCj1ikzGJnYmFJ/+hh0pCEWBlp9PF6wfA76fM+k16J6yi/fzKLehvlhKhlU9VNim9/PuBTd2kEs4SKfb3qHzl9yqiwHyXibiyDGdtmV+Q2syjRlnknxR2M6JTqU4YS+a4f8kiMulOnQ/lJcocOFSq1gWzXS0yaSYPOY8WZJfoGumbsGXodetNxsj0sBOjVtCnyD3FommJf28bzU+8+rnydTBVLCUQKaR6l4UmJrz5whv9sTJ3jHVyK/1kF6dnrqVDI+yiaYKwIezwMS5PYLoFkLGCJogMTUGHSyVbCP0fnO1wkwutxeAQG5zrHvsoXFccg9E0O0rZsofZw170g38NxYjz5qVRfkha5hrSkr8PwAHyVkhcIqpXYRw1y6KNZp4d94ejN6ZO7cOBR0FN8W51OWeW0cluhqd2H/LowoZIpNbdUlCVrver3PyCuLZv+fZOoKXNMGAMKRHgND3U6EoWGZX+SxPMIObQmrQWZgi5GwSmTKHxiZj/bzL7ULYbPHgK72vPgznxOHdwPQPjbItVp97evkvEMReomVwtANr/GnO1bOxqvAiwcZIeqMnWy7ehiZMrhdrDQUiHqNibkwSuh2mfRDuskjpLwVnZ0Q="
