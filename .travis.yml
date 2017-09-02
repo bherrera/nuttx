@@ -1,39 +1,62 @@
 notifications:
   email: false
-
 language: c
 sudo: required
 os: linux
 cache: apt
 
+addons:
+  coverity_scan:
+    # GitHub project metadata
+    # ** specific to your project **
+    project:
+      name: bherrera/nuttx
+      version: 1.0
+      description: NuttX clone to run coverity
+
+    # Where email notification of build analysis results will be sent
+    notification_email: bruherrera@gmail.com
+
+    # Commands to prepare for build_command
+    # ** likely specific to your build **
+    build_command_prepend:
+    - git submodule update --quiet --init --recursive
+    - make distclean
+    - cd tools
+    - ./configure.sh stm32f429i-disco/nsh
+    - cd ..
+
+    # The command that will be added as an argument to "cov-build" to compile your project for analysis,
+    # ** likely specific to your build **
+    build_command: make
+
+    # Pattern to match selecting branches that will run analysis. We recommend leaving this set to 'coverity_scan'.
+    # Take care in resource usage, and consider the build frequency allowances per
+    #   https://scan.coverity.com/faq#frequency
+    branch_pattern: coverity
+
 before_install:
-  - sudo apt-get -qq update
-  - sudo apt-get install -y git gperf flex bison libncurses5-dev
-
-  # Download repo dependency at top level dir
-  - cd ..
-  - git clone https://bitbucket.org/nuttx/apps.git apps
-  - cd -
-
-install: 
-  # GCC ARM NONE EABI
-  - wget https://developer.arm.com/-/media/Files/downloads/gnu-rm/6-2017q2/gcc-arm-none-eabi-6-2017-q2-update-linux.tar.bz2 
-  - tar -xvf gcc-arm-none-eabi-6-2017-q2-update-linux.tar.bz2 
-  - export PATH=$PWD/gcc-arm-none-eabi-6-2017-q2-update/bin:$PATH
-
-  # kconfig-frontends
-  - wget http://ymorin.is-a-geek.org/download/kconfig-frontends/kconfig-frontends-4.11.0.1.tar.xz
-  - tar -xvf kconfig-frontends-4.11.0.1.tar.xz
-  - pushd kconfig-frontends-4.11.0.1 && ./configure --prefix=/usr && make && sudo make install && popd
-
+- sudo apt-get -qq update
+- sudo apt-get install -y git gperf flex bison libncurses5-dev
+- cd ..
+- git clone https://bitbucket.org/nuttx/apps.git apps
+- cd -
+install:
+- wget https://developer.arm.com/-/media/Files/downloads/gnu-rm/6-2017q2/gcc-arm-none-eabi-6-2017-q2-update-linux.tar.bz2
+- tar -xvf gcc-arm-none-eabi-6-2017-q2-update-linux.tar.bz2
+- export PATH=$PWD/gcc-arm-none-eabi-6-2017-q2-update/bin:$PATH
+- wget http://ymorin.is-a-geek.org/download/kconfig-frontends/kconfig-frontends-4.11.0.1.tar.xz
+- tar -xvf kconfig-frontends-4.11.0.1.tar.xz
+- pushd kconfig-frontends-4.11.0.1 && ./configure --prefix=/usr && make && sudo make
+  install && popd
 before_script:
-  # Build stm32f429i-disco/nsh config
-  - make distclean
-  - cd tools
-  - ./configure.sh stm32f429i-disco/nsh
-  - cd ..
-
+- make distclean
+- cd tools
+- ./configure.sh stm32f429i-disco/nsh
+- cd ..
 script:
-  - git submodule update --quiet --init --recursive
-  - make
-
+- git submodule update --quiet --init --recursive
+- make
+env:
+  global:
+    secure: gBrnL0LtAFb3QdfIIXVmSzI8Sl69lLpuLXaRNt7FKbw76D8X9sCdPP+/hU4ySlRqe51HFTNtsbFwQAFdRpaGBN6ukdUXoImJiXTaV4SssRe29VhS8t11bN8o0xK/EzAvhKDGKhZ5+f76n3xTVUWcsuslo+ImSd0c5vdg1v1kP9LjPVOfIVd1iw++S5XFq/71kxLb1pNE/y4a0j7dixwLulHKVLOu6gQ5FZYQAnKlPBkfDzVwJMDktFlVE35Tgh79nAv5eLcMReJmBRkh5+7tm41cg59z8mlJFUde04ue+MqNQNfi/Ae2CgMrXIQSBK/iWagM9DxNSm33c2nU5YQhl9nQNQTOrehXdYevSAJY9/HOB9y5ckUYZpAr8bGB7RteOK/fkosofg3CNMkZqHF1VPI3WHFlHoLQ7nvw3I17AZBzUS2/sb3nnMdJj2Zf7sL4DxKcQPaNJ5Em73Xr6pVqGvpKSt4I91QE0nMQOOqLu0vdci44EG+0oYoYEuDHk5L/n/PqrqCE4L8IYo0LRx64TVvmsWON2nahV6TezeS1nSgvNAMhY5vdpr81p+jlShJ0o0LWwVZKmDj0PxcUFybgpBFI6jRc1YvT8KI0IxpuVwdH8m0WNYfGS+pjja5ApvgRn9dex8KsC1Ii2VIyuGiPHdTHQRpPq8vD5YxuK6axbRg=
