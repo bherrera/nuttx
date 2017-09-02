@@ -10,7 +10,7 @@ addons:
     # GitHub project metadata
     # ** specific to your project **
     project:
-      name: bherrera/nuttx
+      name: bherrera/NuttX
       version: 1.0
       description: NuttX clone to run coverity
 
