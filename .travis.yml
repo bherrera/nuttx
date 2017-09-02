@@ -19,7 +19,7 @@ addons:
 
     # Commands to prepare for build_command
     # ** likely specific to your build **
-    build_command_prepend: make distclean; cd tools; ./configure.sh stm32f429i-disco/nsh; cd ..
+    build_command_prepend: pushd tools; ./travis_coverity.sh ${TRAVIS_NUTTX_CONFIG}; popd;
 
     # The command that will be added as an argument to "cov-build" to compile your project for analysis,
     # ** likely specific to your build **
@@ -45,13 +45,7 @@ install:
 - tar -xvf kconfig-frontends-4.11.0.1.tar.xz
 - pushd kconfig-frontends-4.11.0.1 && ./configure --prefix=/usr && make && sudo make
   install && popd
-before_script:
-- make distclean
-- cd tools
-- ./configure.sh stm32f429i-disco/nsh
-- cd ..
-script:
-- make
+script: if [ ${COVERITY_SCAN_BRANCH} != 1 ]; then cd tools; ./travis_build.sh ${TRAVIS_NUTTX_CONFIG}; fi
 env:
   global:
    # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
