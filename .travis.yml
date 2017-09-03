@@ -31,21 +31,24 @@ addons:
     branch_pattern: coverity
 
 before_install:
-- echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
-- sudo apt-get -qq update
-- sudo apt-get install -y git gperf flex bison libncurses5-dev
-- cd ..
-- git clone https://bitbucket.org/nuttx/apps.git apps
-- cd -
+  - echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
+  - sudo apt-get -qq update
+  - sudo apt-get install -y git gperf flex bison libncurses5-dev
+  - cd ..
+  - git clone https://bitbucket.org/nuttx/apps.git apps
+  - cd -
+
 install:
-- wget https://developer.arm.com/-/media/Files/downloads/gnu-rm/6-2017q2/gcc-arm-none-eabi-6-2017-q2-update-linux.tar.bz2
-- tar -xvf gcc-arm-none-eabi-6-2017-q2-update-linux.tar.bz2
-- export PATH=$PWD/gcc-arm-none-eabi-6-2017-q2-update/bin:$PATH
-- wget http://ymorin.is-a-geek.org/download/kconfig-frontends/kconfig-frontends-4.11.0.1.tar.xz
-- tar -xvf kconfig-frontends-4.11.0.1.tar.xz
-- pushd kconfig-frontends-4.11.0.1 && ./configure --prefix=/usr && make && sudo make
-  install && popd
+  - wget https://developer.arm.com/-/media/Files/downloads/gnu-rm/6-2017q2/gcc-arm-none-eabi-6-2017-q2-update-linux.tar.bz2
+  - tar -xvf gcc-arm-none-eabi-6-2017-q2-update-linux.tar.bz2
+  - export PATH=$PWD/gcc-arm-none-eabi-6-2017-q2-update/bin:$PATH
+
+  - wget http://ymorin.is-a-geek.org/download/kconfig-frontends/kconfig-frontends-4.11.0.1.tar.xz
+  - tar -xvf kconfig-frontends-4.11.0.1.tar.xz
+  - pushd kconfig-frontends-4.11.0.1 && ./configure --prefix=/usr && make && sudo make install && popd
+
 script: if [ ${COVERITY_SCAN_BRANCH} != 1 ]; then cd tools; ./travis_build.sh ${TRAVIS_NUTTX_CONFIG}; fi
+
 env:
   global:
    # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
