@@ -34,31 +34,52 @@
 
 WD=`test -d ${0%/*} && cd ${0%/*}; pwd`
 TOPDIR="${WD}/.."
+USAGE="
 
-#defconfig_list=$(find ${TOPDIR}/configs -iname defconfig)
+USAGE: ${0} <board-name>/<config-name>
 
-#for cfg in $defconfig_list; do
-#  configpath=$(dirname "$cfg")
-#  mod=$(echo "$configpath" | sed -e "s:^${TOPDIR}/configs/::")
-  mod=$1
+Where:
+  <board-name> is the name of the board in the configs directory
+  <config-name> is the name of the board configuration sub-directory
 
-  echo "============================================"
-  echo "== " ${mod}
-  echo "============================================"
+"
 
-  cd ${TOPDIR}
-  make distclean
-  pushd tools
-  if ! bash ./configure.sh ${mod}; then
-    printf '%s failed!' "configure ${mod}" >&2
+while [ ! -z "$1" ]; do
+  case "$1" in
+    *)
+      if [ ! -z "${boardconfig}" ]; then
+        echo ""
+        echo "<board/config> defined twice"
+        echo "$USAGE"
+        exit 1
+      fi
+      boardconfig=$1
+      ;;
+  esac
+  shift
+done
+
+# Sanity checking
+
+if [ -z "${boardconfig}" ]; then
+  echo ""
+  echo "Missing <board/config> argument"
+  echo "$USAGE"
+  exit 2
+fi
+
+
+cd ${TOPDIR}
+make distclean 1>/dev/null 2>&1
+pushd tools
+  if ! bash ./configure.sh ${boardconfig}; then
+    printf '%s failed!' "configure ${boardconfig}" >&2
     exit 1
   fi
-  popd
+popd
 
-  make
-  if test $? -ne 0; then
-    printf '%s failed!' "make ${mod}" >&2
-    exit 1
-  fi
-
-#done
+make -j$(nproc)-1
+if test $? -ne 0; then
+  printf '%s failed!' "make ${boardconfig}" >&2
+  exit 1
+fi

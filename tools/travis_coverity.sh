@@ -37,7 +37,7 @@ TOPDIR="${WD}/.."
 
 cov-configure --comptype gcc --compiler arm-none-eabi-gcc --template
 cd ${TOPDIR}
-make distclean
+make distclean 1>/dev/null 2>&1
 pushd tools
 ./configure.sh $1
 popd
