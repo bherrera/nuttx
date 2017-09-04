@@ -78,7 +78,7 @@ pushd tools
   fi
 popd
 
-make -j$(nproc)-1
+make -j$(nproc)
 if test $? -ne 0; then
   printf '%s failed!' "make ${boardconfig}" >&2
   exit 1
