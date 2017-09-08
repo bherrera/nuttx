@@ -44,6 +44,7 @@
 
 #include <sys/types.h>
 #include <stdbool.h>
+#include <time.h>
 #include <string.h>
 #include <errno.h>
 
@@ -109,6 +110,8 @@ static int kinetis_setrelative(FAR struct rtc_lowerhalf_s *lower,
                                FAR const struct lower_setrelative_s *alarminfo);
 static int kinetis_cancelalarm(FAR struct rtc_lowerhalf_s *lower,
                                int alarmid);
+static int kinetis_rdalarm(FAR struct rtc_lowerhalf_s *lower,
+                           FAR struct lower_rdalarm_s *alarminfo);
 #endif
 
 /****************************************************************************
@@ -126,6 +129,7 @@ static const struct rtc_ops_s g_rtc_ops =
   .setalarm    = kinetis_setalarm,
   .setrelative = kinetis_setrelative,
   .cancelalarm = kinetis_cancelalarm,
+  .rdalarm     = kinetis_rdalarm,
 #endif
 #ifdef CONFIG_RTC_IOCTL
   .ioctl       = NULL,
@@ -486,6 +490,55 @@ static int kinetis_cancelalarm(FAR struct rtc_lowerhalf_s *lower, int alarmid)
 
       ret = kinetis_rtc_cancelalarm();
 
+    }
+
+  return ret;
+}
+#endif
+
+/****************************************************************************
+ * Name: kinetis_rdalarm
+ *
+ * Description:
+ *   Query the RTC alarm.
+ *
+ * Input Parameters:
+ *   lower     - A reference to RTC lower half driver state structure
+ *   alarminfo - Provided information needed to query the alarm
+ *
+ * Returned Value:
+ *   Zero (OK) is returned on success; a negated errno value is returned
+ *   on any failure.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_RTC_ALARM
+static int kinetis_rdalarm(FAR struct rtc_lowerhalf_s *lower,
+                           FAR struct lower_rdalarm_s *alarminfo)
+{
+  struct timespec ts;
+  int ret = -EINVAL;
+
+  ASSERT(lower != NULL && alarminfo != NULL && alarminfo->time != NULL);
+  DEBUGASSERT(alarminfo->id == RTC_ALARMA);
+
+  if (alarminfo->id == RTC_ALARMA)
+    {
+      /* Disable pre-emption while we do this so that we don't have to worry
+       * about being suspended and working on an old time.
+       */
+
+      sched_lock();
+      ret = kinetis_rtc_rdalarm(&ts);
+
+#ifdef CONFIG_LIBC_LOCALTIME
+      (void)localtime_r((FAR const time_t *)&ts.tv_sec,
+                        (FAR struct tm *)alarminfo->time);
+#else
+      (void)gmtime_r((FAR const time_t *)&ts.tv_sec,
+                     (FAR struct tm *)alarminfo->time);
+#endif
+      sched_unlock();
     }
 
   return ret;
