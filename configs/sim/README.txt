@@ -481,6 +481,11 @@ cxxtest
      postpone running C++ static initializers until NuttX has been
      initialized.
 
+fb
+
+  A simple configuration used for some basic (non-graphic) debug of the
+  framebuffer character drivers using apps/examples/fb.
+
 ipforward
 
   This is an NSH configuration that includes a simple test of the NuttX
@@ -844,7 +849,7 @@ pf_ieee802154
 pktradio
 
   This configuration is identical to the 'sixlowpan configuration
-  described below EXCEPT that is uses the genericl packet radio
+  described below EXCEPT that is uses the generic packet radio
   loopback network device.
 
 sixlowpan

@@ -5,17 +5,9 @@
 
 if NET_6LOWPAN
 
-config NET_6LOWPAN_FRAG
-	bool "6LoWPAN Fragmentation"
-	default y
-	---help---
-		CONFIG_NET_6LOWPAN_FRAG specifies if 6lowpan fragmentation should be
-		used or not. Fragmentation is on by default.
-
 config NET_6LOWPAN_NREASSBUF
 	int "Number of preallocated reassembly buffers"
 	default 2
-	depends on NET_6LOWPAN_FRAG
 	---help---
 		Large IPv6 packets will be fragmented by 6LoWPAN into multiple
 		frames and reconstitued into a reassembly buffer on the receiving
@@ -36,7 +28,6 @@ config NET_6LOWPAN_NREASSBUF
 config NET_6LOWPAN_REASS_STATIC
 	bool "Static reassembly buffers"
 	default n
-	depends on NET_6LOWPAN_FRAG
 	---help---
 		By default, reassembly buffers may be allocated dynamically from the
 		stack when all of the statically allocation reassembly buffers are
@@ -45,15 +36,6 @@ config NET_6LOWPAN_REASS_STATIC
 		be selected to suppress all dynamica allocation of reassembly
 		buffers.  In that case, only static reassembly buffers are available;
 		when those are exhausted, frames that require reassembly will be lost.
-
-config NET_6LOWPAN_FRAMELEN
-	int "Max Radio Frame Size"
-	default 127
-	range 1 999999
-	---help---
-		Wireless devices use a variety of frame sizes.  For IEEE 802.15.4
-		radios, this should be 127 bytes.  However, some IEEE 802.15.4
-		radios may support non-standard frame lengths.
 
 choice
 	prompt "6LoWPAN Compression"
@@ -201,7 +183,6 @@ config NET_6LOWPAN_MTU
 	int "6LoWPAN packet buffer size"
 	default 1294
 	range 590 1518
-	depends on NET_6LOWPAN_FRAG
 	---help---
 		Packet buffer size.  This size includes the TCP/UDP payload plus the
 		size of TCP/UDP header, the IP header, and the Ethernet header.
@@ -215,8 +196,7 @@ config NET_6LOWPAN_MTU
 
 config NET_6LOWPAN_TCP_RECVWNDO
 	int "6LoWPAN TCP receive window size"
-	default 1220 if NET_6LOWPAN_FRAG
-	default 102 if !NET_6LOWPAN_FRAG
+	default 1220
 	depends on NET_TCP
 	---help---
 		The size of the advertised receiver's window.   Should be set low

@@ -105,13 +105,9 @@
 #  define MACNET_ADDRSIZE IEEE802154_SADDRSIZE
 #endif
 
-/* Frame size
- * REVISIT: Too many frame length definitions
- */
+/* Frame size */
 
-#if defined(CONFIG_NET_6LOWPAN_FRAMELEN)
-#  define MACNET_FRAMELEN CONFIG_NET_6LOWPAN_FRAMELEN
-#elif defined(CONFIG_NET_IEEE802154_FRAMELEN)
+#if defined(CONFIG_NET_IEEE802154_FRAMELEN)
 #  define MACNET_FRAMELEN CONFIG_NET_IEEE802154_FRAMELEN
 #else
 #  define MACNET_FRAMELEN IEEE802154_MAX_PHY_PACKET_SIZE
@@ -1159,8 +1155,8 @@ static int macnet_properties(FAR struct radio_driver_s *netdev,
 
   /* General */
 
-  properties->sp_addrlen = MACNET_ADDRSIZE;  /* Length of an address */
-  properties->sp_pktlen  = MACNET_FRAMELEN;  /* Fixed frame length */
+  properties->sp_addrlen  = MACNET_ADDRSIZE;  /* Length of an address */
+  properties->sp_framelen = MACNET_FRAMELEN;  /* Fixed frame length */
 
   /* Multicast address (uses broadcast address)
    *
