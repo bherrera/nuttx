@@ -69,23 +69,16 @@
 
 /* Configuration ************************************************************/
 
-/* A single IOB must be big enough to hold a full frame */
-
-#if CONFIG_IOB_BUFSIZE < CONFIG_NET_6LOWPAN_FRAMELEN
-#  error IOBs must be large enough to hold full IEEE802.14.5 frame
-#endif
-
-/* A IOB must also be big enought to hold the maximum MAC header (25 bytes?)
- * plus the FCS and have some amount of space left for the payload.
+/* A single IOB must be big enough to hold a full frame.  This we have to
+ * check at run time.  A IOB must also be big enough to hold the maximum MAC
+ * header (25 bytes?) plus the FCS and have some amount of space left for
+ * the payload.
  */
 
-#if CONFIG_NET_6LOWPAN_FRAMELEN < (SIXLOWPAN_MAC_FCSSIZE + 25)
-#  error CONFIG_NET_6LOWPAN_FRAMELEN too small to hold a IEEE802.14.5 frame
+#define MAX_MACHDR 25 /* REVISIT: This is IEEE 802.15.4 specific */
+#if CONFIG_IOB_BUFSIZE < (SIXLOWPAN_MAC_FCSSIZE + MAX_MACHDR)
+#  error CONFIG_IOB_BUFSIZE too small to hold a IEEE802.14.5 frame
 #endif
-
-/* We must reserve space at the end of the frame for a 2-byte FCS */
-
-#define SIXLOWPAN_FRAMELEN (CONFIG_NET_6LOWPAN_FRAMELEN - SIXLOWPAN_MAC_FCSSIZE)
 
 /* There must be at least enough IOBs to hold the full MTU.  Probably still
  * won't work unless there are a few more.
@@ -361,7 +354,7 @@ static int sixlowpan_pktradio_metadata(FAR struct radio_driver_s *radio,
  *   ipv6    - IPv6 header followed by TCP, UDP, or ICMPv6 header.
  *   buf     - Beginning of the packet packet to send (with IPv6 + protocol
  *             headers)
- *   buflen  - Length of data to send (include IPv6 and protocol headers)
+ *   buflen  - Length of data to send (includes IPv6 and protocol headers)
  *   destmac - The IEEE802.15.4 MAC address of the destination
  *
  * Returned Value:
@@ -385,11 +378,10 @@ int sixlowpan_queue_frames(FAR struct radio_driver_s *radio,
   FAR uint8_t *fptr;
   int framer_hdrlen;
   struct netdev_varaddr_s bcastmac;
-#ifdef CONFIG_NET_6LOWPAN_FRAG
+  uint16_t framelen;
   uint16_t pktlen;
   uint16_t paysize;
   uint16_t outlen = 0;
-#endif
   uint8_t protosize;
   int ret;
 
@@ -497,11 +489,41 @@ int sixlowpan_queue_frames(FAR struct radio_driver_s *radio,
 
   ninfo("Header of length=%u protosize=%u\n", g_frame_hdrlen, protosize);
 
-  /* Check if we need to fragment the packet into several frames */
+  /* Get the maximum packet size supported by this radio. */
 
-  if (buflen > (SIXLOWPAN_FRAMELEN - g_frame_hdrlen - protosize))
+  ret = sixlowpan_radio_framelen(radio);
+  if (ret < 0)
     {
-#ifdef CONFIG_NET_6LOWPAN_FRAG
+       nerr("ERROR: sixlowpan_radio_framelen() failed: %d\n", ret);
+       return ret;
+    }
+
+  /* Limit to the maximum size supported by the IOBs */
+
+  if (ret > CONFIG_IOB_BUFSIZE)
+    {
+      ret = CONFIG_IOB_BUFSIZE;
+    }
+
+  /* Reserve space at the end for any FCS that the hardware may include
+   * in the payload.
+   */
+
+  ret -= SIXLOWPAN_MAC_FCSSIZE;
+  if (ret < MAX_MACHDR || ret > UINT16_MAX)
+    {
+       nerr("ERROR: Invalid frame size: %d\n", ret);
+       return ret;
+    }
+
+  framelen = (uint16_t)ret;
+
+  /* Check if we need to fragment the packet into several frames.
+   * We may need to reserve space at the end of the frame for a 2-byte FCS
+   */
+
+  if (buflen > (framelen - g_frame_hdrlen - protosize))
+    {
       /* qhead will hold the generated frame list; frames will be
        * added at qtail.
        */
@@ -573,7 +595,7 @@ int sixlowpan_queue_frames(FAR struct radio_driver_s *radio,
        * bytes.
        */
 
-      paysize = (SIXLOWPAN_FRAMELEN - g_frame_hdrlen) & ~7;
+      paysize = (framelen - g_frame_hdrlen) & ~7;
       memcpy(fptr + g_frame_hdrlen + protosize, buf, paysize - protosize);
 
       /* Set outlen to what we already sent from the IP payload */
@@ -645,8 +667,7 @@ int sixlowpan_queue_frames(FAR struct radio_driver_s *radio,
           /* Copy payload and enqueue */
           /* Check for the last fragment */
 
-          paysize = (SIXLOWPAN_FRAMELEN - fragn_hdrlen) &
-                    SIXLOWPAN_DISPATCH_FRAG_MASK;
+          paysize = (framelen - fragn_hdrlen) & SIXLOWPAN_DISPATCH_FRAG_MASK;
           if (paysize > buflen - outlen + protosize)
             {
               /* Last fragment, truncate to the correct length */
@@ -705,13 +726,6 @@ int sixlowpan_queue_frames(FAR struct radio_driver_s *radio,
       /* Update the datagram TAG value */
 
       reass->rb_dgramtag++;
-#else
-      nerr("ERROR: Packet too large: %d\n", buflen);
-      nerr("       Cannot to be sent without fragmentation support\n");
-      nerr("       dropping packet\n");
-
-      return -E2BIG;
-#endif
     }
   else
     {

@@ -89,13 +89,9 @@
 #  define LO_ADDRSIZE IEEE802154_SADDRSIZE
 #endif
 
-/* Frame size
- * REVISIT: Too many frame length definitions
- */
+/* Frame size */
 
-#if defined(CONFIG_NET_6LOWPAN_FRAMELEN)
-#  define LO_FRAMELEN CONFIG_NET_6LOWPAN_FRAMELEN
-#elif defined(CONFIG_NET_IEEE802154_FRAMELEN)
+#if defined(CONFIG_NET_IEEE802154_FRAMELEN)
 #  define LO_FRAMELEN CONFIG_NET_IEEE802154_FRAMELEN
 #else
 #  define LO_FRAMELEN IEEE802154_MAX_PHY_PACKET_SIZE
@@ -1005,8 +1001,8 @@ static int lo_properties(FAR struct radio_driver_s *netdev,
 
   /* General */
 
-  properties->sp_addrlen = LO_ADDRSIZE;  /* Length of an address */
-  properties->sp_pktlen  = LO_FRAMELEN;  /* Fixed frame length */
+  properties->sp_addrlen  = LO_ADDRSIZE;  /* Length of an address */
+  properties->sp_framelen = LO_FRAMELEN;  /* Fixed frame length */
 
   /* Multicast address (uses broadcast address)
    *

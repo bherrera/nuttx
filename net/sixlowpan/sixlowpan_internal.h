@@ -372,7 +372,7 @@ int sixlowpan_frame_submit(FAR struct radio_driver_s *radio,
  *   ipv6    - IPv6 header followed by TCP or UDP header.
  *   buf     - Beginning of the packet packet to send (with IPv6 + protocol
  *             headers)
- *   buflen  - Length of data to send (include IPv6 and protocol headers)
+ *   buflen  - Length of data to send (includes IPv6 and protocol headers)
  *   destmac - The IEEE802.15.4 MAC address of the destination
  *
  * Returned Value:
@@ -424,8 +424,15 @@ void sixlowpan_hc06_initialize(void);
  *   6lowpan packet in the packetbuf buffer from a full IPv6 packet in the
  *   uip_buf buffer.
  *
- *     HC-06 (draft-ietf-6lowpan-hc, version 6)
- *     http://tools.ietf.org/html/draft-ietf-6lowpan-hc-06
+ *     HC-06:
+ *
+ *     Originally draft-ietf-6lowpan-hc, version 6:
+ *     http://tools.ietf.org/html/draft-ietf-6lowpan-hc-06,
+ *
+ *   Updated to:
+ *
+ *     RFC 6282:
+ *     https://tools.ietf.org/html/rfc6282
  *
  *   NOTE: sixlowpan_compresshdr_hc06() does not support ISA100_UDP header
  *   compression
@@ -600,6 +607,23 @@ bool sixlowpan_ismacbased(const net_ipv6addr_t ipaddr,
                           FAR const struct netdev_varaddr_s *addr);
 
 /****************************************************************************
+ * Name: sixlowpan_radio_framelen
+ *
+ * Description:
+ *   Get the maximum frame length supported by radio network drvier.
+ *
+ * Input parameters:
+ *   radio - Reference to a radio network driver state instance.
+ *
+ * Returned Value:
+ *   A non-negative, maximum frame lengthis returned on success;  A negated
+ *   errno valueis returned on any failure.
+ *
+ ****************************************************************************/
+
+int sixlowpan_radio_framelen(FAR struct radio_driver_s *radio);
+
+/****************************************************************************
  * Name: sixlowpan_src_panid
  *
  * Description:
@@ -680,9 +704,7 @@ int sixlowpan_extract_destaddr(FAR struct radio_driver_s *radio,
  *
  ****************************************************************************/
 
-#ifdef  CONFIG_NET_6LOWPAN_FRAG
 void sixlowpan_reass_initialize(void);
-#endif /* CONFIG_NET_6LOWPAN_FRAG */
 
 /****************************************************************************
  * Name: sixlowpan_reass_allocate
@@ -709,11 +731,9 @@ void sixlowpan_reass_initialize(void);
  *
  ****************************************************************************/
 
-#ifdef  CONFIG_NET_6LOWPAN_FRAG
 FAR struct sixlowpan_reassbuf_s *
   sixlowpan_reass_allocate(uint16_t reasstag,
                            FAR const struct netdev_varaddr_s *fragsrc);
-#endif /* CONFIG_NET_6LOWPAN_FRAG */
 
 /****************************************************************************
  * Name: sixlowpan_reass_find
@@ -734,11 +754,9 @@ FAR struct sixlowpan_reassbuf_s *
  *
  ****************************************************************************/
 
-#ifdef  CONFIG_NET_6LOWPAN_FRAG
 FAR struct sixlowpan_reassbuf_s *
   sixlowpan_reass_find(uint16_t reasstag,
                        FAR const struct netdev_varaddr_s *fragsrc);
-#endif /* CONFIG_NET_6LOWPAN_FRAG */
 
 /****************************************************************************
  * Name: sixlowpan_reass_free
@@ -760,9 +778,7 @@ FAR struct sixlowpan_reassbuf_s *
  *
  ****************************************************************************/
 
-#ifdef  CONFIG_NET_6LOWPAN_FRAG
 void sixlowpan_reass_free(FAR struct sixlowpan_reassbuf_s *reass);
-#endif /* CONFIG_NET_6LOWPAN_FRAG */
 
 #endif /* CONFIG_NET_6LOWPAN */
 #endif /* _NET_SIXLOWPAN_SIXLOWPAN_INTERNAL_H */

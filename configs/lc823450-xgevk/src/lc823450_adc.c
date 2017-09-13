@@ -1,8 +1,8 @@
 /****************************************************************************
- * drivers/power/pm_register.c
+ * configs/lc823450-xgevk/src/lc823450_adc.c
  *
- *   Copyright (C) 2011-2012 Gregory Nutt. All rights reserved.
- *   Author: Gregory Nutt <gnutt@nuttx.org>
+ *   Copyright (C) 2017 Sony Corporation. All rights reserved.
+ *   Author: Masayuki Ishikawa <Masayuki.Ishikawa@jp.sony.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,52 +39,39 @@
 
 #include <nuttx/config.h>
 
-#include <queue.h>
-#include <assert.h>
+#include <errno.h>
+#include <debug.h>
 
-#include <nuttx/power/pm.h>
+#include <nuttx/board.h>
+#include <nuttx/analog/adc.h>
+#include <arch/board/board.h>
 
-#include "pm.h"
+#include "chip.h"
+#include "up_arch.h"
+#include "lc823450-xgevk.h"
+#include "lc823450_adc.h"
 
-#ifdef CONFIG_PM
-
-/****************************************************************************
- * Public Functions
- ****************************************************************************/
-
-/****************************************************************************
- * Name: pm_register
+/************************************************************************************
+ * Name: lc823450_adc_setup
  *
  * Description:
- *   This function is called by a device driver in order to register to
- *   receive power management event callbacks.
+ *   Initialize ADC and register the ADC driver.
  *
- * Input parameters:
- *   callbacks - An instance of struct pm_callback_s providing the driver
- *               callback functions.
- *
- * Returned value:
- *    Zero (OK) on success; otherwise a negater errno value is returned.
- *
- ****************************************************************************/
+ ************************************************************************************/
 
-int pm_register(FAR struct pm_callback_s *callbacks)
+int lc823450_adc_setup(void)
 {
-  int ret;
+  struct adc_dev_s *adc;
 
-  DEBUGASSERT(callbacks);
+  /* Call lc823450_adcinitialize() to get an instance of the ADC interface */
 
-  /* Add the new entry to the end of the list of registered callbacks */
+  adc = lc823450_adcinitialize();
 
-  ret = pm_lock();
-  if (ret == OK)
+  if (adc == NULL)
     {
-      sq_addlast(&callbacks->entry, &g_pmglobals.registry);
-      pm_unlock();
+      aerr("ERROR: Failed to get ADC interface\n");
+      return -ENODEV;
     }
 
-  return ret;
+  return OK;
 }
-
-#endif /* CONFIG_PM */
-

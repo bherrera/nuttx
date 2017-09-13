@@ -42,6 +42,7 @@
 
 #include <nuttx/config.h>
 #include <stdint.h>
+#include <nuttx/fs/ioctl.h>
 
 /****************************************************************************
  * Pre-processor definitions
@@ -177,7 +178,7 @@
 #define FB_FMT_CXY1        60          /* BPP=12 */
 #define FB_FMT_CXY2        61          /* BPP=16 */
 
-#define FB_ISYUVPLANAR(f)  ((f) >= FB_FMT_AYUV) && (f) <= FB_FMT_YUVP)
+#define FB_ISYUVPLANAR(f)  (((f) >= FB_FMT_AYUV) && (f) <= FB_FMT_YUVP)
 #define FB_ISYUV(f)        (FB_ISYUVPACKED(f) || FB_ISYUVPLANAR(f))
 
 /* Hardware cursor control **************************************************/
@@ -188,6 +189,31 @@
 #define FB_CUR_SETPOSITION 0x04        /* Set the position of the cursor */
 #define FB_CUR_SETSIZE     0x08        /* Set the size of the cursor */
 #define FB_CUR_XOR         0x10        /* Use XOR vs COPY ROP on image */
+#endif
+
+/* FB character driver IOCTL commands ***************************************/
+
+/* ioctls */
+
+#define FBIOGET_VIDEOINFO  _FBIOC(0x0001)  /* Get color plane info */
+                                           /* Argument: writable struct fb_videoinfo_s */
+#define FBIOGET_PLANEINFO  _FBIOC(0x0002)  /* Get video plane info */
+                                           /* Argument: writable struct fb_planeinfo_s */
+#ifdef CONFIG_FB_CMAP
+#  define FBIOGET_CMAP     _FBIOC(0x0003)  /* Get RGB color mapping */
+                                           /* Argument: writable struct fb_cmap_s */
+#  define FBIOPUT_CMAP     _FBIOC(0x0004)  /* Put RGB color mapping */
+                                           /* Argument: read-only struct fb_cmap_s */
+#endif
+#ifdef CONFIG_FB_HWCURSOR
+#  define FBIOGET_CURSOR   _FBIOC(0x0005)  /* Get cursor attributes */
+                                           /* Argument: writable struct fb_cursorattrib_s */
+#  define FBIOPUT_CURSOR   _FBIOC(0x0006)  /* Set cursor attibutes */
+                                           /* Argument: read-only struct fb_setcursor_s */
+#endif
+#ifdef CONFIG_NX_UPDATE
+#  define FBIO_UPDATE      _FBIOC(0x0007)  /* Update a rectangular region in the framebuffer */
+                                           /* Argument: read-only struct nxgl_rect_s */
 #endif
 
 /****************************************************************************
@@ -307,8 +333,8 @@ struct fb_setcursor_s
 };
 #endif
 
-/* The framebuffer "driver" under NuttX is not a driver at all, but simply
- * a driver "object" that is accessed through the following vtable:
+/* The framebuffer "object" is accessed through within the OS via
+ * the following vtable:
  */
 
 struct fb_vtable_s
@@ -322,22 +348,22 @@ struct fb_vtable_s
   int (*getplaneinfo)(FAR struct fb_vtable_s *vtable, int planeno,
                       FAR struct fb_planeinfo_s *pinfo);
 
+#ifdef CONFIG_FB_CMAP
   /* The following are provided only if the video hardware supports RGB
    * color mapping
    */
 
-#ifdef CONFIG_FB_CMAP
   int (*getcmap)(FAR struct fb_vtable_s *vtable,
                  FAR struct fb_cmap_s *cmap);
   int (*putcmap)(FAR struct fb_vtable_s *vtable,
                  FAR const struct fb_cmap_s *cmap);
 #endif
 
+#ifdef CONFIG_FB_HWCURSOR
   /* The following are provided only if the video hardware supports a
    * hardware cursor.
    */
 
-#ifdef CONFIG_FB_HWCURSOR
   int (*getcursor)(FAR struct fb_vtable_s *vtable,
                    FAR struct fb_cursorattrib_s *attrib);
   int (*setcursor)(FAR struct fb_vtable_s *vtable,
@@ -420,6 +446,31 @@ FAR struct fb_vtable_s *up_fbgetvplane(int display, int vplane);
  ****************************************************************************/
 
 void up_fbuninitialize(int display);
+
+/****************************************************************************
+ * Name: fb_register
+ *
+ * Description:
+ *   Register the framebuffer character device at /dev/fbN where N is the
+ *   display number if the devices supports only a single plane.  If the
+ *   hardware supports multile color planes, then the device will be
+ *   registered at /dev/fbN-M where N is the again display number but M is
+ *   the display plane.
+ *
+ * Input Parameters:
+ *   display - The display number for the case of boards supporting multiple
+ *             displays or for hardware that supports supports multile
+ *             layers (each layer is consider a display).  Typically zero.
+ *   plane   - Identifies the color plane on hardware that supports separate
+ *             framebuffer "planes" for each color component.
+ *
+ * Returned Value:
+ *   Zero (OK) is returned success; a negated errno value is returned on any
+ *   failure.
+ *
+ ****************************************************************************/
+
+int fb_register(int display, int plane);
 
 #undef EXTERN
 #ifdef __cplusplus

@@ -121,27 +121,35 @@ ssize_t psock_send(FAR struct socket *psock, FAR const void *buf, size_t len,
                    int flags)
 {
   ssize_t ret;
+  int errcode;
 
   DEBUGASSERT(psock != NULL && buf != NULL);
 
-  /* Treat as a cancellation point */
+  /* Verify that the sockfd corresponds to valid, allocated socket */
 
-  (void)enter_cancellation_point();
+  if (psock == NULL || psock->s_crefs <= 0)
+    {
+      errcode = EBADF;
+      goto errout;
+    }
 
   /* Let the address family's send() method handle the operation */
 
   DEBUGASSERT(psock->s_sockif != NULL && psock->s_sockif->si_send != NULL);
   ret = psock->s_sockif->si_send(psock, buf, len, flags);
 
-  leave_cancellation_point();
   if (ret < 0)
     {
       nerr("ERROR: socket si_send() (or usrsock_sendto()) failed: %d\n", ret);
-      set_errno(-ret);
-      ret = ERROR;
+      errcode = -ret;
+      goto errout;
     }
 
   return ret;
+
+errout:
+  set_errno(errcode);
+  return ERROR;
 }
 
 /****************************************************************************

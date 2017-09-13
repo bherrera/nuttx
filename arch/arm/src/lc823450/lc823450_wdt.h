@@ -1,8 +1,9 @@
 /****************************************************************************
- * drivers/power/pm_register.c
+ * arch/arm/src/lc823450/lc823450_wdt.h
  *
- *   Copyright (C) 2011-2012 Gregory Nutt. All rights reserved.
- *   Author: Gregory Nutt <gnutt@nuttx.org>
+ *   Copyright (C) 2014-2017 Sony Corporation. All rights reserved.
+ *   Author: Masayuki Ishikawa <Masayuki.Ishikawa@jp.sony.com>
+ *   Author: Nobutaka Toyoshima <Nobutaka.Toyoshima@jp.sony.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,58 +34,49 @@
  *
  ****************************************************************************/
 
+#ifndef __ARCH_ARM_SRC_LC823450_LC823450_WDT_H
+#define __ARCH_ARM_SRC_LC823450_LC823450_WDT_H
+
 /****************************************************************************
  * Included Files
  ****************************************************************************/
 
 #include <nuttx/config.h>
 
-#include <queue.h>
-#include <assert.h>
+#include "chip.h"
 
-#include <nuttx/power/pm.h>
+#ifdef CONFIG_WATCHDOG
 
-#include "pm.h"
+/****************************************************************************
+ * Pre-processor Definitions
+ ****************************************************************************/
 
-#ifdef CONFIG_PM
+#ifndef __ASSEMBLY__
+
+#undef EXTERN
+#if defined(__cplusplus)
+#define EXTERN extern "C"
+extern "C"
+{
+#else
+#define EXTERN extern
+#endif
 
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
 
-/****************************************************************************
- * Name: pm_register
- *
- * Description:
- *   This function is called by a device driver in order to register to
- *   receive power management event callbacks.
- *
- * Input parameters:
- *   callbacks - An instance of struct pm_callback_s providing the driver
- *               callback functions.
- *
- * Returned value:
- *    Zero (OK) on success; otherwise a negater errno value is returned.
- *
- ****************************************************************************/
+int lc823450_wdt_initialize(void);
 
-int pm_register(FAR struct pm_callback_s *callbacks)
-{
-  int ret;
+#ifdef CONFIG_WATCHDOG_WORK
+void lc823450_wdg_work_enable(int en);
+#endif
 
-  DEBUGASSERT(callbacks);
-
-  /* Add the new entry to the end of the list of registered callbacks */
-
-  ret = pm_lock();
-  if (ret == OK)
-    {
-      sq_addlast(&callbacks->entry, &g_pmglobals.registry);
-      pm_unlock();
-    }
-
-  return ret;
+#undef EXTERN
+#if defined(__cplusplus)
 }
+#endif
 
-#endif /* CONFIG_PM */
-
+#endif /* __ASSEMBLY__ */
+#endif /* CONFIG_WATCHDOG */
+#endif /* __ARCH_ARM_SRC_LC823450_LC823450_WDT_H */

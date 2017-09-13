@@ -63,6 +63,10 @@ int lc823450_bringup(void)
 {
   int ret;
 
+#ifdef CONFIG_WATCHDOG
+  lc823450_wdt_initialize();
+#endif
+
 #ifdef CONFIG_FS_PROCFS
   /* Mount the procfs file system */
 

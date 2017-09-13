@@ -1,6 +1,7 @@
 /****************************************************************************
  * net/sixlowpan/sixlowpan_hc06.c
- * 6lowpan HC06 implementation (draft-ietf-6lowpan-hc-06)
+ * 6lowpan HC06 implementation (draft-ietf-6lowpan-hc-06, updated to RFC
+ * 6282)
  *
  *   Copyright (C) 2017, Gregory Nutt, all rights reserved
  *   Author: Gregory Nutt <gnutt@nuttx.org>
@@ -49,7 +50,7 @@
  * -Add compression options to UDP, currently only supports
  *  both ports compressed or both ports elided
  * -Verify TC/FL compression works
- * -Add stateless multicast option
+ * -Add multicast support for M=1 and DAC=1
  */
 
 /****************************************************************************
@@ -69,6 +70,21 @@
 #include "sixlowpan/sixlowpan_internal.h"
 
 #ifdef CONFIG_NET_6LOWPAN_COMPRESSION_HC06
+
+/****************************************************************************
+ * Pre-processor Definitions
+ ****************************************************************************/
+
+/* Used in the encoding of address uncompress rules */
+
+#define UNCOMPRESS_POSTLEN_SHIFT 0
+#define UNCOMPRESS_POSTLEN_MASK (0x0f << UNCOMPRESS_POSTLEN_SHIFT)
+#  define UNCOMPRESS_POSTLEN(n) (((n) & UNCOMPRESS_POSTLEN_MASK) >> UNCOMPRESS_POSTLEN_SHIFT)
+#define UNCOMPRESS_PREFLEN_SHIFT 4
+#define UNCOMPRESS_PREFLEN_MASK (0x0f << UNCOMPRESS_PREFLEN_SHIFT)
+#  define UNCOMPRESS_PREFLEN(n) (((n) & UNCOMPRESS_PREFLEN_MASK) >> UNCOMPRESS_PREFLEN_SHIFT)
+#define UNCOMPRESS_MACBASED (1 << 8)
+#define UNCOMPRESS_ZEROPAD  (1 << 9)
 
 /****************************************************************************
  * Private Types
@@ -139,15 +155,17 @@ static const uint16_t g_unc_ctxconf[] =
 
 /* Uncompression of mx-based
  *
- *   0 -> 0 bits from packet
- *   1 -> 2 bytes from prefix - Bunch of zeroes 5 bytes from packet
- *   2 -> 2 bytes from prefix - Zeroes + 3 bytes from packet
- *   3 -> 2 bytes from prefix - Infer 1 bytes from MAC address
+ *   0 -> 0 bits from prefix  / 16 bytes inline
+ *   1 -> 2 bytes from prefix / 5 bytes inline: ffxx::00xx:xxxx:xxxx
+ *   2 -> 2 bytes from prefix / 3 bytes inline: ffxx::00xx:xxxx
+ *   3 -> 2 bytes from prefix / 1 byte inline:  ff02::00xx
+ *
+ *   All other bits required zero padding.
  */
 
 static const uint16_t g_unc_mxconf[] =
 {
-  0x000f, 0x0025, 0x0023, 0x0121
+  0x020f, 0x0225, 0x0223, 0x0221
 };
 
 /* Link local prefix */
@@ -391,9 +409,9 @@ static void uncompress_addr(FAR const struct netdev_varaddr_s *addr,
 {
   FAR const uint8_t *srcptr;
   bool fullmac      = false;
-  bool usemac       = (prefpost & 0x0100) != 0;
-  uint8_t prefcount = (prefpost >> 4) & 0xf;
-  uint8_t postcount =  prefpost & 0x0f;
+  bool usemac       = (prefpost & UNCOMPRESS_MACBASED) != 0;
+  uint8_t prefcount = UNCOMPRESS_PREFLEN(prefpost);
+  uint8_t postcount = UNCOMPRESS_POSTLEN(prefpost);
   int destndx;
   int endndx;
   int i;
@@ -448,9 +466,15 @@ static void uncompress_addr(FAR const struct netdev_varaddr_s *addr,
 
   if (postcount > 0)
     {
-      if (postcount <= 2 && prefcount < 11)
+      /* If there is space for the ...:00ff:fe00:... and if we were not
+       * asked t specifically zero pad the address, then add these magic
+       * bits to the decoded address.
+       */
+
+      if (postcount <= 2 && prefcount < 11 &&
+          (prefpost & UNCOMPRESS_ZEROPAD) == 0)
         {
-          /* 16 bits uncompression ipaddr=0000:00ff:fe00:XXXX */
+          /* 16 bit uncompression ipaddr=0000:00ff:fe00:xxxx */
 
           ipaddr[5] = HTONS(0x00ff);
           ipaddr[6] = HTONS(0xfe00);
@@ -588,8 +612,15 @@ void sixlowpan_hc06_initialize(void)
  *   This function is called by the 6lowpan code to create a compressed
  *   6lowpan packet in the frame buffer from a full IPv6 packet.
  *
- *     HC-06 (draft-ietf-6lowpan-hc, version 6)
- *     http://tools.ietf.org/html/draft-ietf-6lowpan-hc-06
+ *     HC-06:
+ *
+ *     Originally draft-ietf-6lowpan-hc, version 6:
+ *     http://tools.ietf.org/html/draft-ietf-6lowpan-hc-06,
+ *
+ *   Updated to:
+ *
+ *     RFC 6282:
+ *     https://tools.ietf.org/html/rfc6282
  *
  *   NOTE: sixlowpan_compresshdr_hc06() does not support ISA100_UDP header
  *   compression
@@ -833,18 +864,24 @@ int sixlowpan_compresshdr_hc06(FAR struct radio_driver_s *radio,
       iphc1 |= SIXLOWPAN_IPHC_M;
       if (SIXLOWPAN_IS_MCASTADDR_COMPRESSABLE8(ipv6->destipaddr))
         {
-          iphc1 |= SIXLOWPAN_IPHC_DAM_0;
+          iphc1 |= SIXLOWPAN_IPHC_MDAM_8;
 
-          /* Use last byte */
+          /* Use "last" byte ("last" meaning the LS byte in host order.
+           * destipaddr is in big-endian network order).
+           */
 
-          *g_hc06ptr = ipv6->destipaddr[7] & 0x00ff;
+#ifdef CONFIG_ENDIAN_BIG
+          *g_hc06ptr = (ipv6->destipaddr[7] & 0xff);
+#else
+          *g_hc06ptr = (ipv6->destipaddr[7] >> 8);
+#endif
           g_hc06ptr += 1;
         }
       else if (SIXLOWPAN_IS_MCASTADDR_COMPRESSABLE32(ipv6->destipaddr))
         {
           FAR uint8_t *iptr = (FAR uint8_t *)ipv6->destipaddr;
 
-          iphc1 |= SIXLOWPAN_IPHC_DAM_16;
+          iphc1 |= SIXLOWPAN_IPHC_MDAM_32;
 
           /* Second byte + the last three */
 
@@ -856,7 +893,7 @@ int sixlowpan_compresshdr_hc06(FAR struct radio_driver_s *radio,
         {
           FAR uint8_t *iptr = (FAR uint8_t *)ipv6->destipaddr;
 
-          iphc1 |= SIXLOWPAN_IPHC_DAM_64;
+          iphc1 |= SIXLOWPAN_IPHC_MDAM_48;
 
           /* Second byte + the last five */
 
@@ -866,7 +903,7 @@ int sixlowpan_compresshdr_hc06(FAR struct radio_driver_s *radio,
         }
       else
         {
-          iphc1 |= SIXLOWPAN_IPHC_DAM_128;
+          iphc1 |= SIXLOWPAN_IPHC_MDAM_128;
 
           /* Full address */
 
@@ -1233,9 +1270,9 @@ void sixlowpan_uncompresshdr_hc06(FAR struct radio_driver_s *radio,
           /* Non-address context based multicast compression
            *
            *   DAM 00: 128 bits
-           *   DAM 01: 48 bits FFXX::00XX:XXXX:XXXX
-           *   DAM 10: 32 bits FFXX::00XX:XXXX
-           *   DAM 11: 8 bits FF02::00XX
+           *   DAM 01: 48 bits   ffxx::00xx:xxxx:xxxx
+           *   DAM 10: 32 bits   ffxx::00xx:xxxx
+           *   DAM 11: 8 bits    ff02::00xx
            */
 
           uint8_t prefix[] = { 0xff, 0x02 };
