@@ -5,6 +5,7 @@
  *   Copyright (C) 2016 DS-Automotion GmbH. All rights reserved.
  *   Author:  Alexander Entinger <a.entinger@ds-automotion.com>
  *            Thomas Ilk
+ *            Florian Olbrich <flox@posteo.de>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -61,9 +62,9 @@
 
 struct lis3dsh_sensor_data_s
 {
-  int16_t x_acc;              /* Measurement result for x axis */
-  int16_t y_acc;              /* Measurement result for y axis */
-  int16_t z_acc;              /* Measurement result for z axis */
+  int16_t x_acc;                       /* Measurement result for x axis */
+  int16_t y_acc;                       /* Measurement result for y axis */
+  int16_t z_acc;                       /* Measurement result for z axis */
 };
 
 struct lis3dsh_dev_s
@@ -309,8 +310,12 @@ static int lis3dsh_interrupt_handler(int irq, FAR void *context)
 
   /* Find out which device caused the interrupt */
 
-  for (priv = g_lis3dsh_list; priv && priv->config->irq != irq;
+  for (priv = g_lis3dsh_list;
+       priv && priv->config->irq != irq;
        priv = priv->flink);
+    {
+    }
+
   DEBUGASSERT(priv != NULL);
 
   /* Task the worker with retrieving the latest sensor data. We should not do
@@ -318,12 +323,14 @@ static int lis3dsh_interrupt_handler(int irq, FAR void *context)
    * SPI bus from within an interrupt.
    */
 
-  DEBUGASSERT(priv->work.worker == NULL);
-  ret = work_queue(HPWORK, &priv->work, lis3dsh_worker, priv, 0);
-  if (ret < 0)
+  if (work_available(&priv->work))
     {
-      snerr("ERROR: Failed to queue work: %d\n", ret);
-      return ret;
+      ret = work_queue(HPWORK, &priv->work, lis3dsh_worker, priv, 0);
+      if (ret < 0)
+        {
+          snerr("ERROR: Failed to queue work: %d\n", ret);
+          return ret;
+        }
     }
 
   return OK;
