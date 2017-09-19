@@ -1,7 +1,7 @@
 /************************************************************************************
  * configs/open1788/src/lpc17_boardinitialize.c
  *
- *   Copyright (C) 2013, 2015 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2013, 2015, 2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -79,37 +79,42 @@ void lpc17_boardinitialize(void)
 
 #ifdef CONFIG_LPC17_EMC
   lpc17_emcinitialize();
+
 #ifdef CONFIG_LPC17_EXTDRAM
   open1788_sdram_initialize();
 #endif
+
 #ifdef CONFIG_LPC17_EXTNOR
   open1788_nor_initialize();
 #endif
+
 #ifdef CONFIG_LPC17_EXTNAND
   open1788_nand_initialize();
 #endif
 #endif
 
-  /* Configure SSP chip selects if 1) at least one SSP is enabled, and 2) the weak
-   * function open1788_sspdev_initialize() has been brought into the link.
+#if defined(CONFIG_LPC17_SSP0) || defined(CONFIG_LPC17_SSP1) || \
+    defined(CONFIG_LPC17_SSP2)
+  /* Configure SSP chip selects if 1) at least one SSP is enabled, and 2)
+   * the weak function open1788_sspdev_initialize() has been brought into
+   * the link.
    */
 
-#if defined(CONFIG_LPC17_SSP0) || defined(CONFIG_LPC17_SSP1) || defined(CONFIG_LPC17_SSP2)
   if (open1788_sspdev_initialize)
     {
       open1788_sspdev_initialize();
     }
 #endif
 
+#ifdef CONFIG_ARCH_LEDS
   /* Configure on-board LEDs if LED support has been selected. */
 
-#ifdef CONFIG_ARCH_LEDS
   board_autoled_initialize();
 #endif
 
+#ifdef CONFIG_LPC17_LCD
   /* Configure the LCD GPIOs if LCD support has been selected. */
 
-#ifdef CONFIG_LPC17_LCD
   open1788_lcd_initialize();
 #endif
 }
@@ -121,7 +126,7 @@ void lpc17_boardinitialize(void)
  *   If CONFIG_BOARD_INITIALIZE is selected, then an additional
  *   initialization call will be performed in the boot-up sequence to a
  *   function called board_initialize().  board_initialize() will be
- *   called immediately after up_intiialize() is called and just before the
+ *   called immediately after up_initialize() is called and just before the
  *   initial application is started.  This additional initialization phase
  *   may be used, for example, to initialize board-specific device drivers.
  *
@@ -130,13 +135,8 @@ void lpc17_boardinitialize(void)
 #ifdef CONFIG_BOARD_INITIALIZE
 void board_initialize(void)
 {
-  /* Perform NSH initialization here instead of from the NSH.  This
-   * alternative NSH initialization is necessary when NSH is ran in user-space
-   * but the initialization function must run in kernel space.
-   */
+  /* Perform board-specific initialization */
 
-#if defined(CONFIG_NSH_LIBRARY) && !defined(CONFIG_LIB_BOARDCTL)
-  (void)board_app_initialize(0);
-#endif
+  (void)lpc17_bringup();
 }
 #endif
