@@ -1,5 +1,5 @@
 #!/bin/bash
-# prepare_coverity.sh
+# coverity.sh
 #
 #   Copyright (C) 2017 Bruno Herrera. All rights reserved.
 #   Author: Bruno Herrera <bruherrera@gmail.com>
@@ -37,12 +37,12 @@ TOPDIR="${WD}/.."
 
 cov-configure --comptype gcc --compiler arm-none-eabi-gcc --template
 
-cd ${TOPDIR}
-make distclean
-pushd tools
-./configure.sh $1
-popd
-
-cov-build --dir cov-int make
-
-
+for target in ${1//,/ }
+do
+  cd ${TOPDIR}
+  make distclean
+  pushd tools
+  ./configure.sh $target
+  popd
+  cov-build --dir cov-int make
+done

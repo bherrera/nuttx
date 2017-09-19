@@ -68,18 +68,21 @@ if [ -z "${boardconfig}" ]; then
   exit 2
 fi
 
+for target in ${boardconfig//,/ }
+do
+  cd ${TOPDIR}
+  make distclean 1>/dev/null 2>&1
+  echo "Building target: ${target}"
+  pushd tools
+    if ! bash ./configure.sh -l ${target}; then
+      printf '%s failed!' "configure ${target}" >&2
+      exit 1
+    fi
+  popd
 
-cd ${TOPDIR}
-make distclean 1>/dev/null 2>&1
-pushd tools
-  if ! bash ./configure.sh ${boardconfig}; then
-    printf '%s failed!' "configure ${boardconfig}" >&2
+  make -j$(nproc)
+  if test $? -ne 0; then
+    printf '%s failed!' "make ${target}" >&2
     exit 1
   fi
-popd
-
-make -j$(nproc)
-if test $? -ne 0; then
-  printf '%s failed!' "make ${boardconfig}" >&2
-  exit 1
-fi
+done
