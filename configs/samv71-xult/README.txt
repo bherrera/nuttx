@@ -1706,14 +1706,30 @@ NOTES:
      System Type -> Toolchain:
        CONFIG_ARMV7M_TOOLCHAIN_GNU_EABIW=y : GNU ARM EABI toolchain
 
-     NOTE: As of this writing, there are issues with using this tool at
-     the -Os level of optimization.  This has not been proven to be a
-     compiler issue (as least not one that might not be fixed with a
-     well placed volatile qualifier).  However, in any event, it is
-     recommend that you use not more that -O2 optimization.
-
 Configuration sub-directories
 -----------------------------
+
+  fb
+  --
+
+    A simple NSH configuration used for some basic (non-graphic) debug of
+    the framebuffer character driver at drivers/video/fb.c using test at
+    apps/examples/fb.  The SAMv7-XULT LCD driver does not support a
+    framebuffer!  This configuration uses the LCD framebuffer front end at
+    drivers/lcd/lcd_framebuffer to convert the LCD interface into a
+    compatible framebuffer interface.
+
+    NOTES:
+
+    1. This configuration uses USART0 to avoid conflicts with the LCD mode.
+       See the section about entitle "Serial Console" for connection of
+       RS-232 driver hardware.
+
+    STATUS:
+    2017-09-17:  This configuration was completed.  The frame buffer driver
+      is not yet functional.  I see the image only on the right side of the
+      LCD and the colors appear wrong.  NOTE that the similar configuration
+      for the STM3240G-EVAL is fully functional.
 
   knsh:
 
