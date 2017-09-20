@@ -45,7 +45,7 @@ install:
   - pushd kconfig-frontends-4.11.0.1 && ./configure --prefix=/usr && make && sudo make install && popd
 
 before_script:
-  - cd .. && git --depth=50 --branch=master clone https://bitbucket.org/nuttx/apps.git apps
+  - cd .. && git clone --depth=50 --branch=master https://bitbucket.org/nuttx/apps.git apps
 
 script: if [ ${COVERITY_SCAN_BRANCH} != 1 ]; then cd tools; ./travis_build.sh ${TRAVIS_NUTTX_CONFIG}; fi
 
