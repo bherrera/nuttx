@@ -31,6 +31,7 @@ env:
     - TRAVIS_NUTTX_CONFIG=stm3240g-eval/fb
     - TRAVIS_NUTTX_CONFIG=stm32f429i-disco/nsh
     - TRAVIS_NUTTX_CONFIG=stm32f769i-disco/nsh-ethernet
+    - TRAVIS_NUTTX_CONFIG=stm32f769i-disco/nsh-ethernet COVERITY=1
 
   global:
    # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
@@ -39,7 +40,5 @@ env:
 
 matrix:
  fast_finish: true
- include:
-   - env: COVERITY=1
  allow_failures:
-   - env: COVERITY=1 TRAVIS_NUTTX_CONFIG=stm32f769i-disco/nsh-ethernet
+   - env: COVERITY=1
