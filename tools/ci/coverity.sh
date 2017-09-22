@@ -81,7 +81,7 @@ make distclean 1>/dev/null 2>&1
 pushd tools
 ./configure.sh -l $1
 popd
-$COV_BUILD --dir cov-int make -j`$(nproc)`
+$COV_BUILD --dir cov-int make
 
 # Upload results
 tar czf nuttx.tgz cov-int
