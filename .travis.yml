@@ -8,7 +8,7 @@ cache: apt
 before_install:
   - echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
   - sudo apt-get -qq update
-  - sudo apt-get install -y curl git gperf flex bison libncurses5-dev libcurl3 libcurl3-gnutls libcurl4-gnutls-dev
+  - sudo apt-get install -y coreutils curl git gperf flex bison libncurses5-dev libcurl3 libcurl3-gnutls libcurl4-gnutls-dev
 
 install:
   - wget https://developer.arm.com/-/media/Files/downloads/gnu-rm/6-2017q2/gcc-arm-none-eabi-6-2017-q2-update-linux.tar.bz2
