@@ -35,9 +35,11 @@
 WD=`test -d ${0%/*} && cd ${0%/*}; pwd`
 TOPDIR="${WD}/.."
 
+#Configure the Coverity Compiler
 cov-configure --comptype gcc --compiler arm-none-eabi-gcc --template
+
 cd ${TOPDIR}
 make distclean 1>/dev/null 2>&1
 pushd tools
-./configure.sh $1
+./configure.sh -l $1
 popd
