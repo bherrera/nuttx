@@ -72,7 +72,9 @@ for target in ${boardconfig//,/ }
 do
   cd ${TOPDIR}
   make distclean 1>/dev/null 2>&1
+  echo "*******************************"
   echo "Building target: ${target}"
+  echo "*******************************"
   pushd tools
     if ! bash ./configure.sh -l ${target}; then
       printf '%s failed!' "configure ${target}" >&2
