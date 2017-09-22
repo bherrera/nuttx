@@ -5,35 +5,10 @@ sudo: required
 os: linux
 cache: apt
 
-addons:
-  coverity_scan:
-    # GitHub project metadata
-    # ** specific to your project **
-    project:
-      name: bherrera/nuttx
-      version: 1.0
-      description: NuttX clone to run coverity
-
-    # Where email notification of build analysis results will be sent
-    notification_email: bruherrera@gmail.com
-
-    # Commands to prepare for build_command
-    # ** likely specific to your build **
-    build_command_prepend: pushd tools; ./travis_coverity.sh ${TRAVIS_NUTTX_CONFIG}; popd;
-
-    # The command that will be added as an argument to "cov-build" to compile your project for analysis,
-    # ** likely specific to your build **
-    build_command: make
-
-    # Pattern to match selecting branches that will run analysis. We recommend leaving this set to 'coverity_scan'.
-    # Take care in resource usage, and consider the build frequency allowances per
-    #   https://scan.coverity.com/faq#frequency
-    branch_pattern: coverity
-
 before_install:
   - echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
   - sudo apt-get -qq update
-  - sudo apt-get install -y git gperf flex bison libncurses5-dev
+  - sudo apt-get install -y curl git gperf flex bison libncurses5-dev libcurl3 libcurl3-gnutls libcurl4-gnutls-dev
 
 install:
   - wget https://developer.arm.com/-/media/Files/downloads/gnu-rm/6-2017q2/gcc-arm-none-eabi-6-2017-q2-update-linux.tar.bz2
@@ -47,7 +22,8 @@ install:
 before_script:
   - cd .. && git clone --depth=50 --branch=master https://bitbucket.org/nuttx/apps.git apps && cd -
 
-script: if [ ${COVERITY_SCAN_BRANCH} != 1 ]; then cd tools; ./travis_build.sh ${TRAVIS_NUTTX_CONFIG}; fi
+script:
+  - tools/ci/build.sh
 
 env:
   matrix:
@@ -60,3 +36,10 @@ env:
    # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
    #   via the "travis encrypt" command using the project repo's public key
    - secure: "tQJioxUeMpLbIfgaZ/if8cuGx1fgNX5D+/W8tg4aChdXHL1YQdQdRdjH/d3SFGQXnPP3ZCj1ikzGJnYmFJ/+hh0pCEWBlp9PF6wfA76fM+k16J6yi/fzKLehvlhKhlU9VNim9/PuBTd2kEs4SKfb3qHzl9yqiwHyXibiyDGdtmV+Q2syjRlnknxR2M6JTqU4YS+a4f8kiMulOnQ/lJcocOFSq1gWzXS0yaSYPOY8WZJfoGumbsGXodetNxsj0sBOjVtCnyD3FommJf28bzU+8+rnydTBVLCUQKaR6l4UmJrz5whv9sTJ3jHVyK/1kF6dnrqVDI+yiaYKwIezwMS5PYLoFkLGCJogMTUGHSyVbCP0fnO1wkwutxeAQG5zrHvsoXFccg9E0O0rZsofZw170g38NxYjz5qVRfkha5hrSkr8PwAHyVkhcIqpXYRw1y6KNZp4d94ejN6ZO7cOBR0FN8W51OWeW0cluhqd2H/LowoZIpNbdUlCVrver3PyCuLZv+fZOoKXNMGAMKRHgND3U6EoWGZX+SxPMIObQmrQWZgi5GwSmTKHxiZj/bzL7ULYbPHgK72vPgznxOHdwPQPjbItVp97evkvEMReomVwtANr/GnO1bOxqvAiwcZIeqMnWy7ehiZMrhdrDQUiHqNibkwSuh2mfRDuskjpLwVnZ0Q="
+
+matrix:
+ fast_finish: true
+ include:
+   - env: COVERITY=1
+ allow_failures:
+   - env: COVERITY=1

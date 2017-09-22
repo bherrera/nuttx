@@ -1,5 +1,5 @@
 #!/bin/bash
-# travis_build.sh
+# build.sh
 #
 #   Copyright (C) 2017 Bruno Herrera. All rights reserved.
 #   Author: Bruno Herrera <bruherrera@gmail.com>
@@ -32,8 +32,10 @@
 # POSSIBILITY OF SUCH DAMAGE.
 #
 
+set -x
+
 WD=`test -d ${0%/*} && cd ${0%/*}; pwd`
-TOPDIR="${WD}/.."
+TOPDIR="${WD}/../.."
 USAGE="
 
 USAGE: ${0} <board-name>/<config-name>
@@ -68,23 +70,23 @@ if [ -z "${boardconfig}" ]; then
   exit 2
 fi
 
-for target in ${boardconfig//,/ }
-do
-  cd ${TOPDIR}
-  make distclean 1>/dev/null 2>&1
-  echo "*******************************"
-  echo "Building target: ${target}"
-  echo "*******************************"
-  pushd tools
-    if ! bash ./configure.sh -l ${target}; then
-      printf '%s failed!' "configure ${target}" >&2
-      exit 1
-    fi
-  popd
+if [ -n "$COVERITY" ];
+then
+  ./tools/ci/coverity.sh ${boardconfig};
+  exit $?;
+fi
 
-  make -j$(nproc)
-  if test $? -ne 0; then
-    printf '%s failed!' "make ${target}" >&2
-    exit 1
-  fi
-done
+cd ${TOPDIR}
+make distclean 1>/dev/null 2>&1
+pushd tools
+if ! bash ./configure.sh -l ${boardconfig}; then
+  printf '%s failed!' "configure ${boardconfig}" >&2
+  exit 1
+fi
+popd
+
+make -j$(nproc)
+if test $? -ne 0; then
+  printf '%s failed!' "make ${boardconfig}" >&2
+  exit 1
+fi
