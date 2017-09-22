@@ -42,4 +42,4 @@ matrix:
  include:
    - env: COVERITY=1
  allow_failures:
-   - env: COVERITY=1
+   - env: COVERITY=1 TRAVIS_NUTTX_CONFIG=stm32f769i-disco/nsh-ethernet
