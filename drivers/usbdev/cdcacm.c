@@ -85,25 +85,30 @@ struct cdcacm_req_s
 
 struct cdcacm_dev_s
 {
-  FAR struct uart_dev_s    serdev;     /* Serial device structure */
-  FAR struct usbdev_s     *usbdev;     /* usbdev driver pointer */
+  FAR struct uart_dev_s serdev;        /* Serial device structure */
+  FAR struct usbdev_s *usbdev;         /* usbdev driver pointer */
 
   uint8_t config;                      /* Configuration number */
   uint8_t nwrq;                        /* Number of queue write requests (in reqlist) */
   uint8_t nrdq;                        /* Number of queue read requests (in epbulkout) */
   uint8_t minor;                       /* The device minor number */
-  bool    rxenabled;                   /* true: UART RX "interrupts" enabled */
+#ifdef CONFIG_CDCACM_IFLOWCONTROL
+  uint8_t serialstate;                 /* State of the DSR/DCD */
+  bool iflow;                          /* True: input flow control is enabled */
+  bool upper;                          /* True: RX buffer is (nearly) full */
+#endif
+  bool rxenabled;                      /* true: UART RX "interrupts" enabled */
   int16_t rxhead;                      /* Working head; used when rx int disabled */
 
-  uint8_t                  ctrlline;   /* Buffered control line state */
-  struct cdc_linecoding_s  linecoding; /* Buffered line status */
-  cdcacm_callback_t        callback;   /* Serial event callback function */
+  uint8_t ctrlline;                    /* Buffered control line state */
+  struct cdc_linecoding_s linecoding;  /* Buffered line status */
+  cdcacm_callback_t callback;          /* Serial event callback function */
 
-  FAR struct usbdev_ep_s  *epintin;    /* Interrupt IN endpoint structure */
-  FAR struct usbdev_ep_s  *epbulkin;   /* Bulk IN endpoint structure */
-  FAR struct usbdev_ep_s  *epbulkout;  /* Bulk OUT endpoint structure */
+  FAR struct usbdev_ep_s *epintin;     /* Interrupt IN endpoint structure */
+  FAR struct usbdev_ep_s *epbulkin;    /* Bulk IN endpoint structure */
+  FAR struct usbdev_ep_s *epbulkout;   /* Bulk OUT endpoint structure */
   FAR struct usbdev_req_s *ctrlreq;    /* Allocated control request */
-  struct sq_queue_s        reqlist;    /* List of write request containers */
+  struct sq_queue_s reqlist;           /* List of write request containers */
 
   struct usbdev_devinfo_s devinfo;
 
@@ -155,6 +160,12 @@ static struct usbdev_req_s *cdcacm_allocreq(FAR struct usbdev_ep_s *ep,
                  uint16_t len);
 static void    cdcacm_freereq(FAR struct usbdev_ep_s *ep,
                  FAR struct usbdev_req_s *req);
+
+/* Flow Control ************************************************************/
+
+#ifdef CONFIG_CDCACM_IFLOWCONTROL
+static int     cdcacm_serialstate(FAR struct cdcacm_dev_s *priv);
+#endif
 
 /* Configuration ***********************************************************/
 
@@ -355,13 +366,13 @@ static int cdcacm_sndpacket(FAR struct cdcacm_dev_s *priv)
   if (priv == NULL)
     {
       usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_INVALIDARG), 0);
-      return -ENODEV;
+      return -EINVAL;
     }
 #endif
 
   flags = enter_critical_section();
 
-  /* Use our IN endpoint for the transfer */
+  /* Use our bulk IN endpoint for the transfer */
 
   ep = priv->epbulkin;
 
@@ -527,7 +538,18 @@ static inline int cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
       uart_datareceived(serdev);
     }
 
-  /* Return an error if the entire packet could not be transferred */
+  /* Return an overrun error if the entire packet could not be transferred.
+   *
+   * REVISIT:  In the case where RX flow control is enabled, there should
+   * be no data loss.  I could imagine some race conditions where dropping
+   * buffer like this could cause data loss even with RX flow control
+   * enabled.
+   *
+   * Perhaps packets should not be dropped if RX flow control is active;
+   * pehaps the packet should be buffered and used later when there is again
+   * space in the RX data buffer.  This could, of course, result in NAKing
+   * which is something that I want to avoid.
+   */
 
   if (nbytes < reqlen)
     {
@@ -556,7 +578,7 @@ static struct usbdev_req_s *cdcacm_allocreq(FAR struct usbdev_ep_s *ep,
     {
       req->len = len;
       req->buf = EP_ALLOCBUFFER(ep, len);
-      if (!req->buf)
+      if (req->buf == NULL)
         {
           EP_FREEREQ(ep, req);
           req = NULL;
@@ -587,6 +609,108 @@ static void cdcacm_freereq(FAR struct usbdev_ep_s *ep,
       EP_FREEREQ(ep, req);
     }
 }
+
+/****************************************************************************
+ * Name: cdcacm_serialstate
+ *
+ * Description:
+ *   Send the serial state message.
+ *
+ * 1. Format and send a request header with:
+ *
+ *   bmRequestType:
+ *    USB_REQ_DIR_IN | USB_REQ_TYPE_CLASS |
+ *    USB_REQ_RECIPIENT_INTERFACE
+ *   bRequest: ACM_SERIAL_STATE
+ *   wValue: 0
+ *   wIndex: 0
+ *   wLength: Length of data = 2
+ *
+ * 2. Followed by the notification data
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_CDCACM_IFLOWCONTROL
+static int cdcacm_serialstate(FAR struct cdcacm_dev_s *priv)
+{
+  FAR struct usbdev_ep_s *ep;
+  FAR struct usbdev_req_s *req;
+  FAR struct cdcacm_req_s *reqcontainer;
+  FAR struct cdc_notification_s *notify;
+  irqstate_t flags;
+  int ret;
+
+  usbtrace(CDCACM_CLASSAPI_FLOWCONTROL, (uint16_t)priv->serialstate);
+
+  DEBUGASSERT(priv != NULL && priv->epintin != NULL);
+#ifdef CONFIG_DEBUG_FEATURES
+  if (priv == NULL || priv->epintin == NULL)
+    {
+      usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_INVALIDARG), 0);
+      return -EINVAL;
+    }
+#endif
+
+  flags = enter_critical_section();
+
+  /* Use our interrupt IN endpoint for the transfer */
+
+  ep = priv->epintin;
+
+  /* Remove the next container from the request list */
+
+  reqcontainer = (FAR struct cdcacm_req_s *)sq_remfirst(&priv->reqlist);
+  if (reqcontainer == NULL)
+    {
+      ret = -ENOMEM;
+      goto errout_with_flags;
+    }
+
+  /* Decrement the count of write requests */
+
+  priv->nwrq--;
+
+  /* Format the SerialState notifcation */
+
+  DEBUGASSERT(reqcontainer->req != NULL);
+  req                  = reqcontainer->req;
+
+  DEBUGASSERT(req->buf != NULL);
+  notify               = (FAR struct cdc_notification_s *)req->buf;
+
+  notify->type         = (USB_REQ_DIR_IN | USB_REQ_TYPE_CLASS |
+                          USB_REQ_RECIPIENT_INTERFACE);
+  notify->notification = ACM_SERIAL_STATE;
+  notify->value[0]     = 0;
+  notify->value[1]     = 0;
+  notify->index[0]     = 0;
+  notify->index[1]     = 0;
+  notify->len[0]       = 2;
+  notify->len[1]       = 0;
+  notify->data[0]      = priv->serialstate;
+  notify->data[1]      = 0;
+
+  /* Then submit the request to the endpoint */
+
+  req->len             = SIZEOF_NOTIFICATION_S(2);
+  req->priv            = reqcontainer;
+  req->flags           = USBDEV_REQFLAGS_NULLPKT;
+  ret                  = EP_SUBMIT(ep, req);
+
+  if (ret < 0)
+    {
+      usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_SUBMITFAIL), (uint16_t)-ret);
+    }
+
+errout_with_flags:
+  /* Reset all of the "irregular" notification */
+
+  priv->serialstate &= CDC_UART_CONSISTENT;
+
+  leave_critical_section(flags);
+  return ret;
+}
+#endif
 
 /****************************************************************************
  * Name: cdcacm_resetconfig
@@ -661,7 +785,7 @@ static int cdcacm_setconfig(FAR struct cdcacm_dev_s *priv, uint8_t config)
   if (priv == NULL)
     {
       usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_INVALIDARG), 0);
-      return -EIO;
+      return -EINVAL;
     }
 #endif
 
@@ -1064,12 +1188,14 @@ static int cdcacm_bind(FAR struct usbdevclass_driver_s *driver,
       reqcontainer->req->callback = cdcacm_rdcomplete;
     }
 
-  /* Pre-allocate write request containers and put in a free list.
-   * The buffer size should be larger than a full packet.  Otherwise,
+  /* Pre-allocate write request containers and put in a free list.  The
+   * buffer size should be larger than a full build IN packet.  Otherwise,
    * we will send a bogus null packet at the end of each packet.
    *
-   * Pick the larger of the max packet size and the configured request
-   * size.
+   * Pick the larger of the max packet size and the configured request size.
+   *
+   * NOTE: These write requests are sized for the bulk IN endpoint but are
+   * shared with interrupt IN endpoint which does not need a large buffer.
    */
 
 #ifdef CONFIG_USBDEV_DUALSPEED
@@ -1274,7 +1400,7 @@ static int cdcacm_setup(FAR struct usbdevclass_driver_s *driver,
   if (!driver || !dev || !ctrl)
     {
       usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_INVALIDARG), 0);
-      return -EIO;
+      return -EINVAL;
      }
 #endif
 
@@ -1805,7 +1931,7 @@ static int cdcuart_setup(FAR struct uart_dev_s *dev)
   if (!dev || !dev->priv)
     {
       usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_INVALIDARG), 0);
-      return -EIO;
+      return -EINVAL;
     }
 #endif
 
@@ -1941,7 +2067,7 @@ static int cdcuart_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
    case CAIOC_GETCTRLLINE:
       {
         FAR int *ptr = (FAR int *)((uintptr_t)arg);
-        if (ptr)
+        if (ptr != NULL)
           {
             *ptr = priv->ctrlline;
           }
@@ -1952,6 +2078,7 @@ static int cdcuart_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
       }
       break;
 
+#ifdef CONFIG_CDCACM_IFLOWCONTROL
     /* CAIOC_NOTIFY
      *   Send a serial state to the host via the Interrupt IN endpoint.
      *   Argument: int.  This includes the current state of the carrier
@@ -1961,27 +2088,13 @@ static int cdcuart_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 
     case CAIOC_NOTIFY:
       {
-        /* Not yet implemented.  I probably won't bother to implement until
-         * I comr up with a usage model that needs it.
-         *
-         * Here is what the needs to be done:
-         *
-         * 1. Format and send a request header with:
-         *
-         *   bmRequestType:
-         *    USB_REQ_DIR_IN | USB_REQ_TYPE_CLASS |
-         *    USB_REQ_RECIPIENT_INTERFACE
-         *   bRequest: ACM_SERIAL_STATE
-         *   wValue: 0
-         *   wIndex: 0
-         *   wLength: Length of data
-         *
-         * 2. Followed by the notification data (in a separate packet)
-         */
+        DEBUGASSERT(arg < UINT8_MAX);
 
-        ret = -ENOSYS;
+        priv->serialstate = (uint8_t)arg;
+        ret = cdcacm_serialstate(priv);
       }
       break;
+#endif
 
 #ifdef CONFIG_SERIAL_TERMIOS
     case TCGETS:
@@ -1999,12 +2112,26 @@ static int cdcuart_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
         termiosp->c_iflag = serdev->tc_iflag;
         termiosp->c_oflag = serdev->tc_oflag;
         termiosp->c_lflag = serdev->tc_lflag;
+        termiosp->c_cflag = CS8;
+
+#ifdef CONFIG_CDCACM_OFLOWCONTROL
+        /* Report state of output flow control */
+#  warning Missing logic
+#endif
+#ifdef CONFIG_CDCACM_IFLOWCONTROL
+        /* Report state of input flow control */
+
+        termiosp->c_cflag |= (priv->iflow) ? CRTS_IFLOW : 0;
+#endif
       }
       break;
 
     case TCSETS:
       {
         struct termios *termiosp = (FAR struct termios *)arg;
+#ifdef CONFIG_CDCACM_IFLOWCONTROL
+        bool iflow;
+#endif
 
         if (!termiosp)
           {
@@ -2017,6 +2144,57 @@ static int cdcuart_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
         serdev->tc_iflag = termiosp->c_iflag;
         serdev->tc_oflag = termiosp->c_oflag;
         serdev->tc_lflag = termiosp->c_lflag;
+
+#ifdef CONFIG_CDCACM_OFLOWCONTROL
+        /* Handle changes to output flow control */
+#  warning Missing logic
+#endif
+
+#ifdef CONFIG_CDCACM_IFLOWCONTROL
+        /* Handle changes to input flow control */
+
+        iflow = ((termiosp->c_cflag & CRTS_IFLOW) != 0);
+        if (iflow != priv->iflow)
+          {
+            /* The input flow control state has changed.  Save the new
+             * flow control setting.
+             */
+
+            priv->iflow = iflow;
+
+            /* Check if flow control has been disabled. */
+
+            if (!iflow)
+              {
+                /* Flow control has been disabled.  We need to make sure
+                 * that DSR is set unconditionally.
+                 */
+
+                if ((priv->serialstate & CDCACM_UART_DSR) == 0)
+                  {
+                    priv->serialstate |= (CDCACM_UART_DSR | CDCACM_UART_DCD);
+                    ret = cdcacm_serialstate(priv);
+                  }
+              }
+
+            /* Flow control has been enabled.  If the RX buffer is already
+             * (nearly) full, the we need to make sure the DSR is clear.
+             *
+             * NOTE: Here we assume that DSR is set so we don't check its
+             * current value nor to we handle the case where we would set
+             * DSR because the RX buffer is (nearly) empty!
+             */
+
+            else if (priv->upper)
+              {
+                /* In this transition, DSR should already be set */
+
+                priv->serialstate &= ~CDCACM_UART_DSR;
+                priv->serialstate |= CDCACM_UART_DCD;
+                ret = cdcacm_serialstate(priv);
+              }
+          }
+#endif
       }
       break;
 #endif
@@ -2231,13 +2409,77 @@ static bool cdcuart_rxflowcontrol(FAR struct uart_dev_s *dev,
                                   unsigned int nbuffered, bool upper)
 {
 #ifdef CONFIG_CDCACM_IFLOWCONTROL
-  /* Allocate a request */
-  /* Format the SerialState notification */
-  /* Submit the request on the Interrupt IN endpoint */
-#  warning Missing logic
+  FAR struct cdcacm_dev_s *priv;
+  uint8_t mask;
+  int ret;
+
+  /* Sanity check */
+
+#ifdef CONFIG_DEBUG_FEATURES
+  if (dev == NULL || dev->priv == NULL)
+    {
+       usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_INVALIDARG), 0);
+       return false;
+    }
 #endif
 
+  /* Extract reference to private data */
+
+  priv = (FAR struct cdcacm_dev_s *)dev->priv;
+
+  /* Is input flow control enabled? */
+
+  priv->upper = upper;
+  if (priv->iflow)
+    {
+      /* Yes.. Set DSR (TX carrier) if the lower water mark has been crossed
+       * or clear it if the upper water mark has been crossed.
+       */
+
+      mask = upper ? 0 : CDCACM_UART_DSR;
+
+      /* Don't do anything unless this results in a change in the setting of
+       * DSR.
+       */
+
+      if (((priv->serialstate ^ mask) & CDCACM_UART_DSR) != 0)
+        {
+           /* Set or clear DSR (set DCD in any case). */
+
+           priv->serialstate &= ~CDCACM_UART_DSR;
+           priv->serialstate |= (mask | CDCACM_UART_DCD);
+
+           /* And send the SerialState message */
+
+           ret = cdcacm_serialstate(priv);
+           return (ret >= 0 && upper);
+        }
+
+      /* Return true of DSR is not set */
+
+      return ((priv->serialstate & CDCACM_UART_DSR) == 0);
+    }
+  else
+    {
+      /* Flow control is disabled ... DSR must be set */
+
+      if ((priv->serialstate & CDCACM_UART_DSR) == 0)
+        {
+           /* Set DSR and DCD */
+
+           priv->serialstate |= (CDCACM_UART_DSR | CDCACM_UART_DCD);
+
+           /* And send the SerialState message */
+
+           (void)cdcacm_serialstate(priv);
+        }
+
+      return false;
+    }
+#else
+
   return false;
+#endif
 }
 #endif
 
@@ -2376,22 +2618,28 @@ int cdcacm_classobject(int minor, FAR struct usbdev_devinfo_s *devinfo,
   memset(priv, 0, sizeof(struct cdcacm_dev_s));
   sq_init(&priv->reqlist);
 
-  priv->minor              = minor;
+  priv->minor               = minor;
 
   /* Save the caller provided device description (composite only) */
 
   memcpy(&priv->devinfo, devinfo,
          sizeof(struct usbdev_devinfo_s));
 
+#ifdef CONFIG_CDCACM_IFLOWCONTROL
+  /* SerialState */
+
+  priv->serialstate         = (CDCACM_UART_DCD | CDCACM_UART_DSR);
+#endif
+
   /* Fake line status */
 
-  priv->linecoding.baud[0] = (115200) & 0xff;       /* Baud=115200 */
-  priv->linecoding.baud[1] = (115200 >> 8) & 0xff;
-  priv->linecoding.baud[2] = (115200 >> 16) & 0xff;
-  priv->linecoding.baud[3] = (115200 >> 24) & 0xff;
-  priv->linecoding.stop    = CDC_CHFMT_STOP1;       /* One stop bit */
-  priv->linecoding.parity  = CDC_PARITY_NONE;       /* No parity */
-  priv->linecoding.nbits   = 8;                     /* 8 data bits */
+  priv->linecoding.baud[0]  = (115200) & 0xff;       /* Baud=115200 */
+  priv->linecoding.baud[1]  = (115200 >> 8) & 0xff;
+  priv->linecoding.baud[2]  = (115200 >> 16) & 0xff;
+  priv->linecoding.baud[3]  = (115200 >> 24) & 0xff;
+  priv->linecoding.stop     = CDC_CHFMT_STOP1;       /* One stop bit */
+  priv->linecoding.parity   = CDC_PARITY_NONE;       /* No parity */
+  priv->linecoding.nbits    = 8;                     /* 8 data bits */
 
   /* Initialize the serial driver sub-structure */
 
