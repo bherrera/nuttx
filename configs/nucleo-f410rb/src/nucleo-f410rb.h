@@ -1,10 +1,8 @@
 /************************************************************************************
- * arch/arm/src/stm32l4/stm32l4.h
+ * configs/nucleo-f410rb/src/nucleo-f410rb.h
  *
- *   Copyright (C) 2016 Sebastien Lorquet. All rights reserved.
- *   Copyright (C) 2011 Gregory Nutt. All rights reserved.
- *   Authors: Uros Platise <sebastien@lorquet.fr>
- *            Gregory Nutt <gnutt@nuttx.org>
+#   Copyright (C) 2017 Gwenhael Goavec-Merou. All rights reserved.
+#   Author: Gwenhael Goavec-Merou<gwenhael.goavec-merou@trabucayre.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,47 +33,77 @@
  *
  ************************************************************************************/
 
-#ifndef __ARCH_ARM_SRC_STM32L4_STM32L4_H
-#define __ARCH_ARM_SRC_STM32L4_STM32L4_H
+#ifndef __CONFIGS_NUCLEO_F410RB_SRC_NUCLEO_F410RB_H
+#define __CONFIGS_NUCLEO_F410RB_SRC_NUCLEO_F410RB_H
 
 /************************************************************************************
  * Included Files
  ************************************************************************************/
 
 #include <nuttx/config.h>
-#include <sys/types.h>
-#include <stdint.h>
-#include <stdbool.h>
+#include <nuttx/compiler.h>
 
-#include "up_internal.h"
+#include <stdint.h>
 
 /************************************************************************************
  * Pre-processor Definitions
  ************************************************************************************/
+/* Configuration ********************************************************************/
 
-/* Peripherals **********************************************************************/
+/* LED.  User LD2: the green LED is a user LED connected to Arduino signal D13
+ * corresponding to MCU I/O PA5 (pin 21).
+ *
+ * - When the I/O is HIGH value, the LED is on.
+ * - When the I/O is LOW, the LED is off.
+ */
 
-#include "chip.h"
-#include "stm32l4_adc.h"
-#include "stm32l4_can.h"
-#include "stm32l4_comp.h"
-#include "stm32l4_dbgmcu.h"
-#include "stm32l4_dma.h"
-#include "stm32l4_exti.h"
-#include "stm32l4_flash.h"
-#include "stm32l4_fsmc.h"
-#include "stm32l4_gpio.h"
-#include "stm32l4_i2c.h"
-#include "stm32l4_lcd.h"
-#include "stm32l4_pwr.h"
-#include "stm32l4_rcc.h"
-#include "stm32l4_rtc.h"
-#include "stm32l4_sdmmc.h"
-#include "stm32l4_spi.h"
-#include "stm32l4_tim.h"
-#include "stm32l4_uart.h"
-#include "stm32l4_usbdev.h"
-#include "stm32l4_wdg.h"
-#include "stm32l4_lowputc.h"
+#define GPIO_LD2 \
+  (GPIO_PORTA | GPIO_PIN5 | GPIO_OUTPUT_CLEAR | GPIO_OUTPUT | GPIO_PULLUP | \
+   GPIO_SPEED_50MHz)
 
-#endif /* __ARCH_ARM_SRC_STM32L4_STM32L4_H */
+/* Buttons
+ *
+ * B1 USER: the user button is connected to the I/O PC13 (pin 2) of the STM32
+ * microcontroller.
+ */
+
+#define MIN_IRQBUTTON   BUTTON_USER
+#define MAX_IRQBUTTON   BUTTON_USER
+#define NUM_IRQBUTTONS  1
+
+#define GPIO_BTN_USER \
+  (GPIO_INPUT | GPIO_FLOAT | GPIO_EXTI | GPIO_PORTC | GPIO_PIN13)
+
+/************************************************************************************
+ * Public Functions
+ ************************************************************************************/
+
+/************************************************************************************
+ * Name: stm32_bringup
+ *
+ * Description:
+ *   Perform architecture-specific initialization
+ *
+ *   CONFIG_BOARD_INITIALIZE=y :
+ *     Called from board_initialize().
+ *
+ *   CONFIG_BOARD_INITIALIZE=y && CONFIG_LIB_BOARDCTL=y :
+ *     Called from the NSH library
+ *
+ ************************************************************************************/
+
+int stm32_bringup(void);
+
+/************************************************************************************
+ * Name: stm32_adc_setup
+ *
+ * Description:
+ *   Initialize ADC and register the ADC driver.
+ *
+ ************************************************************************************/
+
+#ifdef CONFIG_ADC
+int stm32_adc_setup(void);
+#endif
+
+#endif /* __CONFIGS_NUCLEO_F410RB_SRC_NUCLEO_F410RB_H */

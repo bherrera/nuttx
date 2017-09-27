@@ -53,6 +53,7 @@
 
 #include <nuttx/irq.h>
 #include <nuttx/kmalloc.h>
+#include <nuttx/wdog.h>
 #include <nuttx/arch.h>
 #include <nuttx/serial/serial.h>
 
@@ -70,15 +71,32 @@
 #endif
 
 /****************************************************************************
+ * Pre-processor Definitions
+ ****************************************************************************/
+
+/* RX poll delay = 200 milliseconds. CLK_TCK is the number of clock ticks per
+ * second
+ */
+
+#define CDCACM_RXDELAY   (CLK_TCK / 5)
+
+/****************************************************************************
  * Private Types
  ****************************************************************************/
 
 /* Container to support a list of requests */
 
-struct cdcacm_req_s
+struct cdcacm_wrreq_s
 {
-  FAR struct cdcacm_req_s *flink;      /* Implements a singly linked list */
+  FAR struct cdcacm_wrreq_s *flink;    /* Implements a singly linked list */
   FAR struct usbdev_req_s *req;        /* The contained request */
+};
+
+struct cdcacm_rdreq_s
+{
+  FAR struct cdcacm_rdreq_s *flink;    /* Implements a singly linked list */
+  FAR struct usbdev_req_s *req;        /* The contained request */
+  uint16_t offset;                     /* Offset to valid data in the RX request */
 };
 
 /* This structure describes the internal state of the driver */
@@ -89,18 +107,18 @@ struct cdcacm_dev_s
   FAR struct usbdev_s *usbdev;         /* usbdev driver pointer */
 
   uint8_t config;                      /* Configuration number */
-  uint8_t nwrq;                        /* Number of queue write requests (in reqlist) */
+  uint8_t nwrq;                        /* Number of queue write requests (in txfree) */
   uint8_t nrdq;                        /* Number of queue read requests (in epbulkout) */
   uint8_t minor;                       /* The device minor number */
+  uint8_t ctrlline;                    /* Buffered control line state */
 #ifdef CONFIG_CDCACM_IFLOWCONTROL
   uint8_t serialstate;                 /* State of the DSR/DCD */
   bool iflow;                          /* True: input flow control is enabled */
+  bool iactive;                        /* True: input flow control is active */
   bool upper;                          /* True: RX buffer is (nearly) full */
 #endif
   bool rxenabled;                      /* true: UART RX "interrupts" enabled */
-  int16_t rxhead;                      /* Working head; used when rx int disabled */
 
-  uint8_t ctrlline;                    /* Buffered control line state */
   struct cdc_linecoding_s linecoding;  /* Buffered line status */
   cdcacm_callback_t callback;          /* Serial event callback function */
 
@@ -108,17 +126,19 @@ struct cdcacm_dev_s
   FAR struct usbdev_ep_s *epbulkin;    /* Bulk IN endpoint structure */
   FAR struct usbdev_ep_s *epbulkout;   /* Bulk OUT endpoint structure */
   FAR struct usbdev_req_s *ctrlreq;    /* Allocated control request */
-  struct sq_queue_s reqlist;           /* List of write request containers */
+  WDOG_ID rxfailsafe;                  /* Failsafe timer to prevent RX stalls */
+  struct sq_queue_s txfree;            /* Available write request containers */
+  struct sq_queue_s rxpending;         /* Pending read request containers */
 
   struct usbdev_devinfo_s devinfo;
 
   /* Pre-allocated write request containers.  The write requests will
-   * be linked in a free list (reqlist), and used to send requests to
+   * be linked in a free list (txfree), and used to send requests to
    * EPBULKIN; Read requests will be queued in the EBULKOUT.
    */
 
-  struct cdcacm_req_s wrreqs[CONFIG_CDCACM_NWRREQS];
-  struct cdcacm_req_s rdreqs[CONFIG_CDCACM_NRDREQS];
+  struct cdcacm_wrreq_s wrreqs[CONFIG_CDCACM_NWRREQS];
+  struct cdcacm_rdreq_s rdreqs[CONFIG_CDCACM_NRDREQS];
 
   /* Serial I/O buffers */
 
@@ -151,8 +171,12 @@ struct cdcacm_alloc_s
 static uint16_t cdcacm_fillrequest(FAR struct cdcacm_dev_s *priv,
                  uint8_t *reqbuf, uint16_t reqlen);
 static int     cdcacm_sndpacket(FAR struct cdcacm_dev_s *priv);
-static inline int cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
-                 uint8_t *reqbuf, uint16_t reqlen);
+static int     cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
+                FAR struct cdcacm_rdreq_s *rdcontainer);
+static int     cdcacm_requeue_rdrequest(FAR struct cdcacm_dev_s *priv,
+                 FAR struct cdcacm_rdreq_s *rdcontainer);
+static int     cdcacm_release_rxpending(FAR struct cdcacm_dev_s *priv);
+static void    cdcacm_rxtimeout(int argc, wdparm_t arg1, ...);
 
 /* Request helpers *********************************************************/
 
@@ -356,7 +380,7 @@ static int cdcacm_sndpacket(FAR struct cdcacm_dev_s *priv)
 {
   FAR struct usbdev_ep_s *ep;
   FAR struct usbdev_req_s *req;
-  FAR struct cdcacm_req_s *reqcontainer;
+  FAR struct cdcacm_wrreq_s *wrcontainer;
   uint16_t reqlen;
   irqstate_t flags;
   int len;
@@ -383,18 +407,18 @@ static int cdcacm_sndpacket(FAR struct cdcacm_dev_s *priv)
 
   uinfo("head=%d tail=%d nwrq=%d empty=%d\n",
         priv->serdev.xmit.head, priv->serdev.xmit.tail,
-        priv->nwrq, sq_empty(&priv->reqlist));
+        priv->nwrq, sq_empty(&priv->txfree));
 
   /* Get the maximum number of bytes that will fit into one bulk IN request */
 
   reqlen = MAX(CONFIG_CDCACM_BULKIN_REQLEN, ep->maxpacket);
 
-  while (!sq_empty(&priv->reqlist))
+  while (!sq_empty(&priv->txfree))
     {
       /* Peek at the request in the container at the head of the list */
 
-      reqcontainer = (FAR struct cdcacm_req_s *)sq_peek(&priv->reqlist);
-      req          = reqcontainer->req;
+      wrcontainer = (FAR struct cdcacm_wrreq_s *)sq_peek(&priv->txfree);
+      req         = wrcontainer->req;
 
       /* Fill the request with serial TX data */
 
@@ -403,13 +427,13 @@ static int cdcacm_sndpacket(FAR struct cdcacm_dev_s *priv)
         {
           /* Remove the empty container from the request list */
 
-          (void)sq_remfirst(&priv->reqlist);
+          (void)sq_remfirst(&priv->txfree);
           priv->nwrq--;
 
           /* Then submit the request to the endpoint */
 
           req->len     = len;
-          req->priv    = reqcontainer;
+          req->priv    = wrcontainer;
           req->flags   = USBDEV_REQFLAGS_NULLPKT;
           ret          = EP_SUBMIT(ep, req);
           if (ret != OK)
@@ -441,11 +465,17 @@ static int cdcacm_sndpacket(FAR struct cdcacm_dev_s *priv)
  *
  ****************************************************************************/
 
-static inline int cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
-                                    FAR uint8_t *reqbuf, uint16_t reqlen)
+static int cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
+                             FAR struct cdcacm_rdreq_s *rdcontainer)
 {
-  FAR uart_dev_t *serdev = &priv->serdev;
-  FAR struct uart_buffer_s *recv = &serdev->recv;
+  FAR uart_dev_t *serdev;
+  FAR struct uart_buffer_s *recv;
+  FAR struct usbdev_req_s *req;
+  FAR uint8_t *reqbuf;
+#ifdef CONFIG_SERIAL_IFLOWCONTROL_WATERMARKS
+  unsigned int watermark;
+#endif
+  uint16_t reqlen;
   uint16_t currhead;
   uint16_t nexthead;
   uint16_t nbytes = 0;
@@ -453,22 +483,25 @@ static inline int cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
   uinfo("head=%d tail=%d nrdq=%d reqlen=%d\n",
         priv->serdev.recv.head, priv->serdev.recv.tail, priv->nrdq, reqlen);
 
-  /* Get the next head index. During the time that RX interrupts are
-   * disabled, the the serial driver will be extracting data from the
-   * circular buffer and modifying recv.tail.  During this time, we should
-   * avoid modifying recv.head; Instead we will use a shadow copy of the
-   * index.  When interrupts are restored, the real recv.head will be
-   * updated with this index.
-   */
+  DEBUGASSERT(priv != NULL && rdcontainer != NULL);
+#ifdef CONFIG_CDCACM_IFLOWCONTROL
+  DEBUGASSERT(priv->rxenabled && !priv->iactive);
+#else
+  DEBUGASSERT(priv->rxenabled);
+#endif
 
-  if (priv->rxenabled)
-    {
-      currhead = recv->head;
-    }
-  else
-    {
-      currhead = priv->rxhead;
-    }
+  req    = rdcontainer->req;
+  DEBUGASSERT(req != NULL);
+
+  reqbuf = &req->buf[rdcontainer->offset];
+  reqlen = req->xfrd - rdcontainer->offset;
+
+  serdev = &priv->serdev;
+  recv   = &serdev->recv;
+
+  /* Get the next head index. */
+
+  currhead = recv->head;
 
   /* Pre-calculate the head index and check for wrap around.  We need to do
    * this so that we can determine if the circular buffer will overrun
@@ -480,6 +513,12 @@ static inline int cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
     {
       nexthead = 0;
     }
+
+#ifdef CONFIG_SERIAL_IFLOWCONTROL_WATERMARKS
+  /* Pre-calcuate the watermark level that we will need to test against. */
+
+  watermark = (CONFIG_SERIAL_IFLOWCONTROL_UPPER_WATERMARK * recv->size) / 100;
+#endif
 
   /* Then copy data into the RX buffer until either: (1) all of the data has
    * been copied, or (2) the RX buffer is full.
@@ -496,6 +535,53 @@ static inline int cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
 
   while (nexthead != recv->tail && nbytes < reqlen)
     {
+#ifdef CONFIG_SERIAL_IFLOWCONTROL
+#ifdef CONFIG_SERIAL_IFLOWCONTROL_WATERMARKS
+      unsigned int nbuffered;
+
+      /* How many bytes are buffered */
+
+      if (recv->head >= recv->tail)
+        {
+          nbuffered = recv->head - recv->tail;
+        }
+      else
+        {
+          nbuffered = recv->size - recv->tail + recv->head;
+        }
+
+      /* Is the level now above the watermark level that we need to report? */
+
+      if (nbuffered >= watermark)
+        {
+          /* Let the lower level driver know that the watermark level has been
+           * crossed.  It will probably activate RX flow control.
+           */
+
+          if (cdcuart_rxflowcontrol(&priv->serdev, nbuffered, true))
+            {
+              /* Low-level driver activated RX flow control, exit loop now. */
+
+              break;
+            }
+        }
+#else
+      /* Check if RX buffer is full and allow serial low-level driver to pause
+       * processing. This allows proper utilization of hardware flow control.
+       */
+
+      if (nexthead == rxbuf->tail);
+        {
+          if (cdcuart_rxflowcontrol(&priv->serdev, recv->size, true))
+            {
+              /* Low-level driver activated RX flow control, exit loop now. */
+
+              break;
+            }
+        }
+#endif
+#endif
+
       /* Copy one byte to the head of the circular RX buffer */
 
       recv->buffer[currhead] = *reqbuf++;
@@ -514,18 +600,9 @@ static inline int cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
         }
     }
 
-  /* Write back the head pointer using the shadow index if RX "interrupts"
-   * are disabled.
-   */
+  /* Write back the head pointer. */
 
-  if (priv->rxenabled)
-    {
-      recv->head = currhead;
-    }
-  else
-    {
-      priv->rxhead = currhead;
-    }
+  recv->head = currhead;
 
   /* If data was added to the incoming serial buffer, then wake up any
    * threads is waiting for incoming data. If we are running in an interrupt
@@ -533,31 +610,174 @@ static inline int cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
    * returns.
    */
 
-  if (priv->rxenabled && nbytes > 0)
+  if (nbytes > 0)
     {
       uart_datareceived(serdev);
     }
 
-  /* Return an overrun error if the entire packet could not be transferred.
-   *
-   * REVISIT:  In the case where RX flow control is enabled, there should
-   * be no data loss.  I could imagine some race conditions where dropping
-   * buffer like this could cause data loss even with RX flow control
-   * enabled.
-   *
-   * Perhaps packets should not be dropped if RX flow control is active;
-   * pehaps the packet should be buffered and used later when there is again
-   * space in the RX data buffer.  This could, of course, result in NAKing
-   * which is something that I want to avoid.
-   */
+  /* Return an overrun error if the entire packet could not be transferred. */
 
   if (nbytes < reqlen)
     {
       usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_RXOVERRUN), 0);
+      rdcontainer->offset = nbytes;
       return -ENOSPC;
     }
 
   return OK;
+}
+
+/****************************************************************************
+ * Name: cdcacm_requeue_rdrequest
+ *
+ * Description:
+ *   Add any pending RX packets to the upper half serial drivers RX buffer.
+ *
+ ****************************************************************************/
+
+static int cdcacm_requeue_rdrequest(FAR struct cdcacm_dev_s *priv,
+                                    FAR struct cdcacm_rdreq_s *rdcontainer)
+{
+  FAR struct usbdev_req_s *req;
+  FAR struct usbdev_ep_s *ep;
+  int ret;
+
+  DEBUGASSERT(priv != NULL && rdcontainer != NULL);
+  rdcontainer->offset = 0;
+
+  req      = rdcontainer->req;
+  DEBUGASSERT(req != NULL);
+
+  /* Requeue the read request */
+
+  ep       = priv->epbulkout;
+  req->len = ep->maxpacket;
+  ret      = EP_SUBMIT(ep, req);
+  if (ret != OK)
+    {
+      usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_RDSUBMIT),
+                              (uint16_t)-req->result);
+    }
+
+  return ret;
+}
+
+/****************************************************************************
+ * Name: cdcacm_release_rxpending
+ *
+ * Description:
+ *   Add any pending RX packets to the upper half serial drivers RX buffer.
+ *
+ ****************************************************************************/
+
+static int cdcacm_release_rxpending(FAR struct cdcacm_dev_s *priv)
+{
+  FAR struct cdcacm_rdreq_s *rdcontainer;
+  irqstate_t flags;
+  int ret = -EBUSY;
+
+  /* Note that the priv->rxpending queue, priv->rxenabled, priv->iactive
+   * may be modified by interrupt level processing and, hence, interrupts
+   * must be disabled throughout the following.
+   */
+
+  flags = enter_critical_section();
+
+  /* Cancel any pending failsafe timer */
+
+  wd_cancel(priv->rxfailsafe);
+
+  /* If RX "interrupts" are enabled and if input flow control is not in
+   * effect, then pass the packet at the head of the pending RX packet list
+   * to the upper serial layer.  Otherwise, let the packet continue to pend
+   * the priv->rxpending list until the upper serial layer is able to buffer
+   * it.
+   */
+
+#ifdef CONFIG_CDCACM_IFLOWCONTROL
+  if (priv->rxenabled && !priv->iactive)
+#else
+  if (priv->rxenabled)
+#endif
+    {
+      /* Process pending RX packets while the queue is not empty and while
+       * no errors occur.  NOTE that the priv->rxpending queue is accessed
+       * from interrupt level processing and, hence, interrupts must be
+       * disabled throughout the following.
+       */
+
+      ret = OK;
+
+      while (!sq_empty(&priv->rxpending))
+        {
+          /* Process each packet in the priv->rxpending list */
+
+          rdcontainer = (FAR struct cdcacm_rdreq_s *)
+            sq_peek(&priv->rxpending);
+          DEBUGASSERT(rdcontainer != NULL);
+
+          /* cdcacm_recvpacket() will return OK if the entire packet was
+           * successful buffered.  In the case of RX buffer overrun,
+           * cdcacm_recvpacket() will return a failure (-ENOSPC) and will
+           * set the req->offset field
+           */
+
+          ret = cdcacm_recvpacket(priv, rdcontainer);
+          if (ret < 0)
+            {
+              uwarn("WARNING: RX buffer full\n");
+              break;
+            }
+
+          /* The entire packet was processed and may be removed from the
+           * pending RX list and returned to the DCD.
+           */
+
+          (void)sq_remfirst(&priv->rxpending);
+          ret = cdcacm_requeue_rdrequest(priv, rdcontainer);
+        }
+    }
+
+  /* Restart the RX failsafe timer if there are RX packets in
+   * priv->rxpending.  This could happen if either RX "interrupts" are
+   * disable, RX flow control is in effect of if the upper serial drivers
+   * RX buffer is full and cannot accept additional data.
+   *
+   * If/when the timer expires, cdcacm_release_rxpending() will be called
+   * the timer handler (at interrupt level).
+   *
+   * The timer may not be necessary, but it is a failsafe to be certain
+   * that data cannot stall in priv->rxpending.
+   */
+
+  if (!sq_empty(&priv->rxpending))
+    {
+      (void)wd_start(priv->rxfailsafe, CDCACM_RXDELAY, cdcacm_rxtimeout,
+                     1, priv);
+    }
+
+  leave_critical_section(flags);
+  return ret;
+}
+
+/****************************************************************************
+ * Name: cdcacm_rxtimeout
+ *
+ * Description:
+ *   Timer expiration handler.  Whenever cdcacm_release_rxpending()
+ *   terminates with  pending RX data in priv->rxpending, it will set a
+ *   timer to recheck the queued RX data can be processed later.  This
+ *   failsafe timer may not be necessary, but this reduces my  paranoia
+ *   about stalls in the RX pending FIFO .
+ *
+ ****************************************************************************/
+
+static void cdcacm_rxtimeout(int argc, wdparm_t arg1, ...)
+{
+  FAR struct cdcacm_dev_s *priv = (FAR struct cdcacm_dev_s *)arg1;
+
+  DEBUGASSERT(priv != NULL);
+  (void)cdcacm_release_rxpending(priv);
 }
 
 /****************************************************************************
@@ -635,12 +855,10 @@ static int cdcacm_serialstate(FAR struct cdcacm_dev_s *priv)
 {
   FAR struct usbdev_ep_s *ep;
   FAR struct usbdev_req_s *req;
-  FAR struct cdcacm_req_s *reqcontainer;
+  FAR struct cdcacm_wrreq_s *wrcontainer;
   FAR struct cdc_notification_s *notify;
   irqstate_t flags;
   int ret;
-
-  usbtrace(CDCACM_CLASSAPI_FLOWCONTROL, (uint16_t)priv->serialstate);
 
   DEBUGASSERT(priv != NULL && priv->epintin != NULL);
 #ifdef CONFIG_DEBUG_FEATURES
@@ -651,6 +869,8 @@ static int cdcacm_serialstate(FAR struct cdcacm_dev_s *priv)
     }
 #endif
 
+  usbtrace(CDCACM_CLASSAPI_FLOWCONTROL, (uint16_t)priv->serialstate);
+
   flags = enter_critical_section();
 
   /* Use our interrupt IN endpoint for the transfer */
@@ -659,8 +879,8 @@ static int cdcacm_serialstate(FAR struct cdcacm_dev_s *priv)
 
   /* Remove the next container from the request list */
 
-  reqcontainer = (FAR struct cdcacm_req_s *)sq_remfirst(&priv->reqlist);
-  if (reqcontainer == NULL)
+  wrcontainer = (FAR struct cdcacm_wrreq_s *)sq_remfirst(&priv->txfree);
+  if (wrcontainer == NULL)
     {
       ret = -ENOMEM;
       goto errout_with_flags;
@@ -672,8 +892,8 @@ static int cdcacm_serialstate(FAR struct cdcacm_dev_s *priv)
 
   /* Format the SerialState notifcation */
 
-  DEBUGASSERT(reqcontainer->req != NULL);
-  req                  = reqcontainer->req;
+  DEBUGASSERT(wrcontainer->req != NULL);
+  req                  = wrcontainer->req;
 
   DEBUGASSERT(req->buf != NULL);
   notify               = (FAR struct cdc_notification_s *)req->buf;
@@ -693,7 +913,7 @@ static int cdcacm_serialstate(FAR struct cdcacm_dev_s *priv)
   /* Then submit the request to the endpoint */
 
   req->len             = SIZEOF_NOTIFICATION_S(2);
-  req->priv            = reqcontainer;
+  req->priv            = wrcontainer;
   req->flags           = USBDEV_REQFLAGS_NULLPKT;
   ret                  = EP_SUBMIT(ep, req);
 
@@ -950,9 +1170,9 @@ static void cdcacm_ep0incomplete(FAR struct usbdev_ep_s *ep,
 static void cdcacm_rdcomplete(FAR struct usbdev_ep_s *ep,
                               FAR struct usbdev_req_s *req)
 {
+  FAR struct cdcacm_rdreq_s *rdcontainer;
   FAR struct cdcacm_dev_s *priv;
   irqstate_t flags;
-  int ret;
 
   /* Sanity check */
 
@@ -968,36 +1188,47 @@ static void cdcacm_rdcomplete(FAR struct usbdev_ep_s *ep,
 
   priv = (FAR struct cdcacm_dev_s *)ep->priv;
 
+  /* Get the container of the read request */
+
+  rdcontainer = (FAR struct cdcacm_rdreq_s *)req->priv;
+  DEBUGASSERT(rdcontainer != NULL);
+
   /* Process the received data unless this is some unusual condition */
 
   flags = enter_critical_section();
   switch (req->result)
     {
     case 0: /* Normal completion */
-      usbtrace(TRACE_CLASSRDCOMPLETE, priv->nrdq);
-      cdcacm_recvpacket(priv, req->buf, req->xfrd);
+      {
+        usbtrace(TRACE_CLASSRDCOMPLETE, priv->nrdq);
+
+        /* Place the incoming packet at the end of pending RX packet list. */
+
+        sq_addlast((FAR sq_entry_t *)rdcontainer, &priv->rxpending);
+        rdcontainer->offset = 0;
+
+        /* Then process all pending RX packet starting at the head of the
+         * list
+         */
+
+         (void)cdcacm_release_rxpending(priv);
+      }
       break;
 
     case -ESHUTDOWN: /* Disconnection */
-      usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_RDSHUTDOWN), 0);
-      priv->nrdq--;
-      leave_critical_section(flags);
-      return;
+      {
+        usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_RDSHUTDOWN), 0);
+        priv->nrdq--;
+      }
+      break;
 
     default: /* Some other error occurred */
-      usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_RDUNEXPECTED),
-                              (uint16_t)-req->result);
-      break;
-    };
-
-  /* Requeue the read request */
-
-  req->len = ep->maxpacket;
-  ret      = EP_SUBMIT(ep, req);
-  if (ret != OK)
-    {
-      usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_RDSUBMIT),
-                              (uint16_t)-req->result);
+      {
+        usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_RDUNEXPECTED),
+                                (uint16_t)-req->result);
+        cdcacm_requeue_rdrequest(priv, rdcontainer);
+        break;
+      }
     }
 
   leave_critical_section(flags);
@@ -1016,7 +1247,7 @@ static void cdcacm_wrcomplete(FAR struct usbdev_ep_s *ep,
                               FAR struct usbdev_req_s *req)
 {
   FAR struct cdcacm_dev_s *priv;
-  FAR struct cdcacm_req_s *reqcontainer;
+  FAR struct cdcacm_wrreq_s *wrcontainer;
   irqstate_t flags;
 
   /* Sanity check */
@@ -1031,13 +1262,13 @@ static void cdcacm_wrcomplete(FAR struct usbdev_ep_s *ep,
 
   /* Extract references to our private data */
 
-  priv         = (FAR struct cdcacm_dev_s *)ep->priv;
-  reqcontainer = (FAR struct cdcacm_req_s *)req->priv;
+  priv        = (FAR struct cdcacm_dev_s *)ep->priv;
+  wrcontainer = (FAR struct cdcacm_wrreq_s *)req->priv;
 
   /* Return the write request to the free list */
 
   flags = enter_critical_section();
-  sq_addlast((FAR sq_entry_t *)reqcontainer, &priv->reqlist);
+  sq_addlast((FAR sq_entry_t *)wrcontainer, &priv->txfree);
   priv->nwrq++;
   leave_critical_section(flags);
 
@@ -1085,7 +1316,8 @@ static int cdcacm_bind(FAR struct usbdevclass_driver_s *driver,
                        FAR struct usbdev_s *dev)
 {
   FAR struct cdcacm_dev_s *priv = ((FAR struct cdcacm_driver_s *)driver)->dev;
-  FAR struct cdcacm_req_s *reqcontainer;
+  FAR struct cdcacm_wrreq_s *wrcontainer;
+  FAR struct cdcacm_rdreq_s *rdcontainer;
   irqstate_t flags;
   uint16_t reqlen;
   int ret;
@@ -1175,17 +1407,18 @@ static int cdcacm_bind(FAR struct usbdevclass_driver_s *driver,
 
   for (i = 0; i < CONFIG_CDCACM_NRDREQS; i++)
     {
-      reqcontainer      = &priv->rdreqs[i];
-      reqcontainer->req = cdcacm_allocreq(priv->epbulkout, reqlen);
-      if (reqcontainer->req == NULL)
+      rdcontainer      = &priv->rdreqs[i];
+      rdcontainer->req = cdcacm_allocreq(priv->epbulkout, reqlen);
+      if (rdcontainer->req == NULL)
         {
           usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_RDALLOCREQ), -ENOMEM);
           ret = -ENOMEM;
           goto errout;
         }
 
-      reqcontainer->req->priv     = reqcontainer;
-      reqcontainer->req->callback = cdcacm_rdcomplete;
+      rdcontainer->offset        = 0;
+      rdcontainer->req->priv     = rdcontainer;
+      rdcontainer->req->callback = cdcacm_rdcomplete;
     }
 
   /* Pre-allocate write request containers and put in a free list.  The
@@ -1211,20 +1444,20 @@ static int cdcacm_bind(FAR struct usbdevclass_driver_s *driver,
 
   for (i = 0; i < CONFIG_CDCACM_NWRREQS; i++)
     {
-      reqcontainer      = &priv->wrreqs[i];
-      reqcontainer->req = cdcacm_allocreq(priv->epbulkin, reqlen);
-      if (reqcontainer->req == NULL)
+      wrcontainer      = &priv->wrreqs[i];
+      wrcontainer->req = cdcacm_allocreq(priv->epbulkin, reqlen);
+      if (wrcontainer->req == NULL)
         {
           usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_WRALLOCREQ), -ENOMEM);
           ret = -ENOMEM;
           goto errout;
         }
 
-      reqcontainer->req->priv     = reqcontainer;
-      reqcontainer->req->callback = cdcacm_wrcomplete;
+      wrcontainer->req->priv     = wrcontainer;
+      wrcontainer->req->callback = cdcacm_wrcomplete;
 
       flags = enter_critical_section();
-      sq_addlast((FAR sq_entry_t *)reqcontainer, &priv->reqlist);
+      sq_addlast((FAR sq_entry_t *)wrcontainer, &priv->txfree);
       priv->nwrq++;     /* Count of write requests available */
       leave_critical_section(flags);
     }
@@ -1261,7 +1494,8 @@ static void cdcacm_unbind(FAR struct usbdevclass_driver_s *driver,
                           FAR struct usbdev_s *dev)
 {
   FAR struct cdcacm_dev_s *priv;
-  FAR struct cdcacm_req_s *reqcontainer;
+  FAR struct cdcacm_wrreq_s *wrcontainer;
+  FAR struct cdcacm_rdreq_s *rdcontainer;
   irqstate_t flags;
   int i;
 
@@ -1324,11 +1558,11 @@ static void cdcacm_unbind(FAR struct usbdevclass_driver_s *driver,
       DEBUGASSERT(priv->nrdq == 0);
       for (i = 0; i < CONFIG_CDCACM_NRDREQS; i++)
         {
-          reqcontainer = &priv->rdreqs[i];
-          if (reqcontainer->req)
+          rdcontainer = &priv->rdreqs[i];
+          if (rdcontainer->req)
             {
-              cdcacm_freereq(priv->epbulkout, reqcontainer->req);
-              reqcontainer->req = NULL;
+              cdcacm_freereq(priv->epbulkout, rdcontainer->req);
+              rdcontainer->req = NULL;
             }
         }
 
@@ -1347,12 +1581,12 @@ static void cdcacm_unbind(FAR struct usbdevclass_driver_s *driver,
       flags = enter_critical_section();
       DEBUGASSERT(priv->nwrq == CONFIG_CDCACM_NWRREQS);
 
-      while (!sq_empty(&priv->reqlist))
+      while (!sq_empty(&priv->txfree))
         {
-          reqcontainer = (struct cdcacm_req_s *)sq_remfirst(&priv->reqlist);
-          if (reqcontainer->req != NULL)
+          wrcontainer = (struct cdcacm_wrreq_s *)sq_remfirst(&priv->txfree);
+          if (wrcontainer->req != NULL)
             {
-              cdcacm_freereq(priv->epbulkin, reqcontainer->req);
+              cdcacm_freereq(priv->epbulkin, wrcontainer->req);
               priv->nwrq--;     /* Number of write requests queued */
             }
         }
@@ -1822,7 +2056,6 @@ static void cdcacm_disconnect(FAR struct usbdevclass_driver_s *driver,
 
   priv->serdev.xmit.head = 0;
   priv->serdev.xmit.tail = 0;
-  priv->rxhead = 0;
   leave_critical_section(flags);
 
   /* Perform the soft connect function so that we will we can be
@@ -2156,12 +2389,6 @@ static int cdcuart_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
         iflow = ((termiosp->c_cflag & CRTS_IFLOW) != 0);
         if (iflow != priv->iflow)
           {
-            /* The input flow control state has changed.  Save the new
-             * flow control setting.
-             */
-
-            priv->iflow = iflow;
-
             /* Check if flow control has been disabled. */
 
             if (!iflow)
@@ -2175,24 +2402,54 @@ static int cdcuart_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
                     priv->serialstate |= (CDCACM_UART_DSR | CDCACM_UART_DCD);
                     ret = cdcacm_serialstate(priv);
                   }
+
+                /* Save the new flow control setting. */
+
+                priv->iflow   = false;
+                priv->iactive = false;
+
+                /* During the time that flow control was disabled, incoming
+                 * packets were queued in priv->rxpending.  We must now
+                 * process all of them (unless RX interrupts are also
+                 * disabled)
+                 */
+
+                (void)cdcacm_release_rxpending(priv);
+
               }
 
-            /* Flow control has been enabled.  If the RX buffer is already
-             * (nearly) full, the we need to make sure the DSR is clear.
-             *
-             * NOTE: Here we assume that DSR is set so we don't check its
-             * current value nor to we handle the case where we would set
-             * DSR because the RX buffer is (nearly) empty!
-             */
+            /* Flow control has been enabled. */
 
-            else if (priv->upper)
+            else
               {
-                /* In this transition, DSR should already be set */
+                /* Save the new flow control setting. */
 
-                priv->serialstate &= ~CDCACM_UART_DSR;
-                priv->serialstate |= CDCACM_UART_DCD;
-                ret = cdcacm_serialstate(priv);
+                priv->iflow        = true;
+                priv->iactive      = false;
+
+                /* If the RX buffer is already (nearly) full, the we need to
+                 * make sure the DSR is clear.
+                 *
+                 * NOTE: Here we assume that DSR is set so we don't check its
+                 * current value nor to we handle the case where we would set
+                 * DSR because the RX buffer is (nearly) empty!
+                 */
+
+                if (priv->upper)
+                  {
+                    priv->serialstate &= ~CDCACM_UART_DSR;
+                    priv->serialstate |= CDCACM_UART_DCD;
+                    ret = cdcacm_serialstate(priv);
+
+                    /* Input flow control is now active */
+
+                    priv->iactive      = true;
+                  }
               }
+
+            /* RX "interrupts are no longer disabled */
+
+            priv->rxenabled = true;
           }
 #endif
       }
@@ -2299,12 +2556,17 @@ static int cdcuart_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
  *   3. With enable==false when the port is closed (just before cdcuart_detach
  *      and cdcuart_shutdown are called).
  *
+ * Assumptions:
+ *   Called from the serial upper-half driver running on the thread of
+ *   execution of the caller of the driver or, possibly, on from the
+ *   USB interrupt handler (at least for the case where the RX interrupt
+ *   is disabled)
+ *
  ****************************************************************************/
 
 static void cdcuart_rxint(FAR struct uart_dev_s *dev, bool enable)
 {
   FAR struct cdcacm_dev_s *priv;
-  FAR uart_dev_t *serdev;
   irqstate_t flags;
 
   usbtrace(CDCACM_CLASSAPI_RXINT, (uint16_t)enable);
@@ -2321,8 +2583,7 @@ static void cdcuart_rxint(FAR struct uart_dev_s *dev, bool enable)
 
   /* Extract reference to private data */
 
-  priv   = (FAR struct cdcacm_dev_s *)dev->priv;
-  serdev = &priv->serdev;
+  priv = (FAR struct cdcacm_dev_s *)dev->priv;
 
   /* We need exclusive access to the RX buffer and private structure
    * in the following.
@@ -2337,44 +2598,28 @@ static void cdcuart_rxint(FAR struct uart_dev_s *dev, bool enable)
 
       if (!priv->rxenabled)
         {
-          /* Yes.  During the time that RX interrupts are disabled, the
-           * the serial driver will be extracting data from the circular
-           * buffer and modifying recv.tail.  During this time, we
-           * should avoid modifying recv.head; When interrupts are restored,
-           * we can update the head pointer for all of the data that we
-           * put into circular buffer while "interrupts" were disabled.
-           */
-
-          if (priv->rxhead != serdev->recv.head)
-            {
-              serdev->recv.head = priv->rxhead;
-
-              /* Yes... signal the availability of new data */
-
-              uart_datareceived(serdev);
-            }
-
-          /* RX "interrupts are no longer disabled */
+          /* Yes.. RX "interrupts are no longer disabled */
 
           priv->rxenabled = true;
+
+          /* During the time that RX interrupts was disabled, incoming
+           * packets were queued in priv->rxpending.  We must now process
+           * all of them (unless flow control is enabled)
+           *
+           * NOTE: This action may cause this function to be re-entered
+           * with enable == false.
+           */
+
+          (void)cdcacm_release_rxpending(priv);
         }
     }
 
-  /* RX "interrupts" are disabled.  Is this a transition from enabled
-   * to disabled state?
+  /* RX "interrupts" are disabled.  Nothing special needs to be done on a
+   * transition from the enabled to the disabled state.
    */
 
-  else if (priv->rxenabled)
+  else
     {
-      /* Yes.  During the time that RX interrupts are disabled, the
-       * the serial driver will be extracting data from the circular
-       * buffer and modifying recv.tail.  During this time, we
-       * should avoid modifying recv.head; When interrupts are disabled,
-       * we use a shadow index and continue adding data to the circular
-       * buffer.
-       */
-
-      priv->rxhead    = serdev->recv.head;
       priv->rxenabled = false;
     }
 
@@ -2410,8 +2655,6 @@ static bool cdcuart_rxflowcontrol(FAR struct uart_dev_s *dev,
 {
 #ifdef CONFIG_CDCACM_IFLOWCONTROL
   FAR struct cdcacm_dev_s *priv;
-  uint8_t mask;
-  int ret;
 
   /* Sanity check */
 
@@ -2436,28 +2679,68 @@ static bool cdcuart_rxflowcontrol(FAR struct uart_dev_s *dev,
        * or clear it if the upper water mark has been crossed.
        */
 
-      mask = upper ? 0 : CDCACM_UART_DSR;
-
-      /* Don't do anything unless this results in a change in the setting of
-       * DSR.
-       */
-
-      if (((priv->serialstate ^ mask) & CDCACM_UART_DSR) != 0)
+      if (upper)
         {
-           /* Set or clear DSR (set DCD in any case). */
+          /* Don't do anything unless this results in a change in the
+           * setting of DSR.
+           */
 
-           priv->serialstate &= ~CDCACM_UART_DSR;
-           priv->serialstate |= (mask | CDCACM_UART_DCD);
+          if ((priv->serialstate & CDCACM_UART_DSR) != 0)
+            {
+              /* Clear DSR (set DCD in any case). */
 
-           /* And send the SerialState message */
+              priv->serialstate &= ~CDCACM_UART_DSR;
+              priv->serialstate |= CDCACM_UART_DCD;
 
-           ret = cdcacm_serialstate(priv);
-           return (ret >= 0 && upper);
+              /* And send the SerialState message.
+               * REVISIT: Error return case.  Would an error mean DSR is not
+               * set?
+               */
+
+              (void)cdcacm_serialstate(priv);
+            }
+
+          /* Flow control is active */
+
+          priv->iactive = true;
         }
 
-      /* Return true of DSR is not set */
+      /* Lower watermark crossing.  Don't do anything unless this results in
+       * a change in the setting of DSR.
+       */
 
-      return ((priv->serialstate & CDCACM_UART_DSR) == 0);
+      else
+        {
+          /* Flow control is not active (Needed before calling
+           * cdcacm_release_rxpending())
+           */
+
+          priv->iactive = false;
+
+          /* Set DSR if it is not alredy set */
+
+          if ((priv->serialstate & CDCACM_UART_DSR) == 0)
+            {
+              priv->serialstate |= (CDCACM_UART_DSR | CDCACM_UART_DCD);
+
+              /* And send the SerialState message.
+               * REVISIT: Error return case.  Would an error mean DSR is
+               *  still clear?
+               */
+
+              (void)cdcacm_serialstate(priv);
+            }
+
+          /* During the time that flow control ws disabled, incoming packets
+           * were queued in priv->rxpending.  We must now process all of
+           * them (unless RX interrupts becomes enabled)
+           *
+           * NOTE: This action may cause this function to be re-entered with
+           * upper == false.
+           */
+
+          (void)cdcacm_release_rxpending(priv);
+        }
     }
   else
     {
@@ -2465,17 +2748,26 @@ static bool cdcuart_rxflowcontrol(FAR struct uart_dev_s *dev,
 
       if ((priv->serialstate & CDCACM_UART_DSR) == 0)
         {
-           /* Set DSR and DCD */
+          /* Set DSR and DCD */
 
-           priv->serialstate |= (CDCACM_UART_DSR | CDCACM_UART_DCD);
+          priv->serialstate |= (CDCACM_UART_DSR | CDCACM_UART_DCD);
 
-           /* And send the SerialState message */
+          /* And send the SerialState message
+           * REVISIT: Error return case.  Would an error mean DSR is still
+           * not set?
+           */
 
-           (void)cdcacm_serialstate(priv);
+          (void)cdcacm_serialstate(priv);
+
+          /* Flow control is not active */
+
+          priv->iactive = false;
         }
-
-      return false;
     }
+
+  /* Return true flow control is active */
+
+  return priv->iactive;
 #else
 
   return false;
@@ -2557,7 +2849,7 @@ static bool cdcuart_txempty(FAR struct uart_dev_s *dev)
 #endif
 
   /* When all of the allocated write requests have been returned to the
-   * reqlist, then there is no longer any TX data in flight.
+   * txfree, then there is no longer any TX data in flight.
    */
 
   return priv->nwrq >= CONFIG_CDCACM_NWRREQS;
@@ -2616,7 +2908,8 @@ int cdcacm_classobject(int minor, FAR struct usbdev_devinfo_s *devinfo,
   /* Initialize the USB serial driver structure */
 
   memset(priv, 0, sizeof(struct cdcacm_dev_s));
-  sq_init(&priv->reqlist);
+  sq_init(&priv->txfree);
+  sq_init(&priv->rxpending);
 
   priv->minor               = minor;
 
@@ -2624,6 +2917,13 @@ int cdcacm_classobject(int minor, FAR struct usbdev_devinfo_s *devinfo,
 
   memcpy(&priv->devinfo, devinfo,
          sizeof(struct usbdev_devinfo_s));
+
+  /* Allocate a failsafe time so that we can be assured that RX data
+   * can never stall in the priv->rxpending queue.
+   */
+
+  priv->rxfailsafe          = wd_create();
+  DEBUGASSERT(priv->rxfailsafe != NULL);
 
 #ifdef CONFIG_CDCACM_IFLOWCONTROL
   /* SerialState */
