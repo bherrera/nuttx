@@ -176,6 +176,8 @@
 
 #if defined(CONFIG_PM) && !defined(CONFIG_PM_SERIAL_ACTIVITY)
 #  define CONFIG_PM_SERIAL_ACTIVITY 10
+#endif
+#if defined(CONFIG_PM)
 #  define PM_IDLE_DOMAIN             0 /* Revisit */
 #endif
 
@@ -1031,7 +1033,7 @@ static void stm32f0serial_setformat(FAR struct uart_dev_s *dev)
  * Description:
  *   Enable or disable APB clock for the USART peripheral
  *
- * Input parameters:
+ * Input Parameters:
  *   dev - A reference to the USART driver state structure
  *   on  - Enable clock if 'on' is 'true' and disable if 'false'
  *
@@ -1905,7 +1907,7 @@ static bool stm32f0serial_rxavailable(FAR struct uart_dev_s *dev)
  *   Return true if USART activated RX flow control to block more incoming
  *   data
  *
- * Input parameters:
+ * Input Parameters:
  *   dev       - USART device instance
  *   nbuffered - the number of characters currently buffered
  *               (if CONFIG_SERIAL_IFLOWCONTROL_WATERMARKS is

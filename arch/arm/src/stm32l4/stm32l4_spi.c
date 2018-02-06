@@ -576,18 +576,23 @@ static inline bool spi_16bitmode(FAR struct stm32l4_spidev_s *priv)
 #ifdef CONFIG_STM32L4_SPI_DMA
 static void spi_dmarxwait(FAR struct stm32l4_spidev_s *priv)
 {
+  int ret;
+
   /* Take the semaphore (perhaps waiting).  If the result is zero, then the DMA
    * must not really have completed???
    */
 
-  while (sem_wait(&priv->rxsem) != 0 || priv->rxresult == 0)
+  do
     {
-      /* The only case that an error should occur here is if the wait was awakened
-       * by a signal.
+      ret = nxsem_wait(&priv->rxsem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
        */
 
-      ASSERT(errno == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR || priv->rxresult == 0);
 }
 #endif
 
@@ -602,18 +607,23 @@ static void spi_dmarxwait(FAR struct stm32l4_spidev_s *priv)
 #ifdef CONFIG_STM32L4_SPI_DMA
 static void spi_dmatxwait(FAR struct stm32l4_spidev_s *priv)
 {
+  int ret;
+
   /* Take the semaphore (perhaps waiting).  If the result is zero, then the DMA
    * must not really have completed???
    */
 
-  while (sem_wait(&priv->txsem) != 0 || priv->txresult == 0)
+  do
     {
-      /* The only case that an error should occur here is if the wait was awakened
-       * by a signal.
+      ret = nxsem_wait(&priv->txsem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
        */
 
-      ASSERT(errno == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR || priv->txresult == 0);
 }
 #endif
 
@@ -628,7 +638,7 @@ static void spi_dmatxwait(FAR struct stm32l4_spidev_s *priv)
 #ifdef CONFIG_STM32L4_SPI_DMA
 static inline void spi_dmarxwakeup(FAR struct stm32l4_spidev_s *priv)
 {
-  (void)sem_post(&priv->rxsem);
+  (void)nxsem_post(&priv->rxsem);
 }
 #endif
 
@@ -643,7 +653,7 @@ static inline void spi_dmarxwakeup(FAR struct stm32l4_spidev_s *priv)
 #ifdef CONFIG_STM32L4_SPI_DMA
 static inline void spi_dmatxwakeup(FAR struct stm32l4_spidev_s *priv)
 {
-  (void)sem_post(&priv->txsem);
+  (void)nxsem_post(&priv->txsem);
 }
 #endif
 
@@ -870,25 +880,31 @@ static void spi_modifycr(uint32_t addr, FAR struct stm32l4_spidev_s *priv,
 static int spi_lock(FAR struct spi_dev_s *dev, bool lock)
 {
   FAR struct stm32l4_spidev_s *priv = (FAR struct stm32l4_spidev_s *)dev;
+  int ret;
 
   if (lock)
     {
       /* Take the semaphore (perhaps waiting) */
 
-      while (sem_wait(&priv->exclsem) != 0)
+      do
         {
-          /* The only case that an error should occur here is if the wait was awakened
-           * by a signal.
+          ret = nxsem_wait(&priv->exclsem);
+
+          /* The only case that an error should occur here is if the wait
+           * was awakened by a signal.
            */
 
-          ASSERT(errno == EINTR);
+          DEBUGASSERT(ret == OK || ret == -EINTR);
         }
+      while (ret == -EINTR);
     }
   else
     {
-      (void)sem_post(&priv->exclsem);
+      (void)nxsem_post(&priv->exclsem);
+      ret = OK;
     }
-  return OK;
+
+  return ret;
 }
 
 /************************************************************************************
@@ -1465,7 +1481,7 @@ static void spi_recvblock(FAR struct spi_dev_s *dev, FAR void *rxbuffer, size_t 
  * Description:
  *   Initialize the selected SPI bus in its default state (Master, 8-bit, mode 0, etc.)
  *
- * Input Parameter:
+ * Input Parameters:
  *   priv   - private SPI device structure
  *
  * Returned Value:
@@ -1510,20 +1526,20 @@ static void spi_bus_initialize(FAR struct stm32l4_spidev_s *priv)
 
   /* Initialize the SPI semaphore that enforces mutually exclusive access */
 
-  sem_init(&priv->exclsem, 0, 1);
+  nxsem_init(&priv->exclsem, 0, 1);
 
 #ifdef CONFIG_STM32L4_SPI_DMA
   /* Initialize the SPI semaphores that is used to wait for DMA completion */
 
-  sem_init(&priv->rxsem, 0, 0);
-  sem_init(&priv->txsem, 0, 0);
+  nxsem_init(&priv->rxsem, 0, 0);
+  nxsem_init(&priv->txsem, 0, 0);
 
   /* These semaphores are used for signaling and, hence, should not have
    * priority inheritance enabled.
    */
 
-  sem_setprotocol(&priv->rxsem, SEM_PRIO_NONE);
-  sem_setprotocol(&priv->txsem, SEM_PRIO_NONE);
+  nxsem_setprotocol(&priv->rxsem, SEM_PRIO_NONE);
+  nxsem_setprotocol(&priv->txsem, SEM_PRIO_NONE);
 
   /* Get DMA channels.  NOTE: stm32l4_dmachannel() will always assign the DMA channel.
    * if the channel is not available, then stm32l4_dmachannel() will block and wait
@@ -1555,7 +1571,7 @@ static void spi_bus_initialize(FAR struct stm32l4_spidev_s *priv)
  * Description:
  *   Initialize the selected SPI bus
  *
- * Input Parameter:
+ * Input Parameters:
  *   Port number (for hardware that has mutiple SPI interfaces)
  *
  * Returned Value:

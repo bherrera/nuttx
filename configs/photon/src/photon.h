@@ -105,12 +105,22 @@ int stm32_bringup(void);
 #endif
 
 /****************************************************************************
+ * Name: stm32_spidev_initialize
+ *
+ * Description:
+ *   Called to configure SPI chip select GPIO pins for the Photon board.
+ *
+ ****************************************************************************/
+
+void weak_function stm32_spidev_initialize(void);
+
+/****************************************************************************
  * Name: photon_watchdog_initialize()
  *
  * Description:
  *   Perform architecture-specific initialization of the Watchdog hardware.
  *
- * Input parameters:
+ * Input Parameters:
  *   None
  *
  * Returned Value:
@@ -128,7 +138,7 @@ int photon_watchdog_initialize(void);
  * Description:
  *   Initialize wlan hardware and driver for Photon board.
  *
- * Input parameters:
+ * Input Parameters:
  *   None
  *
  * Returned Value:

@@ -561,10 +561,21 @@ static inline void stm32_i2c_modifyreg(FAR struct stm32_i2c_priv_s *priv,
 
 static inline void stm32_i2c_sem_wait(FAR struct stm32_i2c_priv_s *priv)
 {
-  while (sem_wait(&priv->sem_excl) != 0)
+  int ret;
+
+  do
     {
-      DEBUGASSERT(errno == EINTR);
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&priv->sem_excl);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
+       */
+
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /************************************************************************************
@@ -622,7 +633,7 @@ static inline int stm32_i2c_sem_waitdone(FAR struct stm32_i2c_priv_s *priv)
 
   /* Signal the interrupt handler that we are waiting.  NOTE:  Interrupts
    * are currently disabled but will be temporarily re-enabled below when
-   * sem_timedwait() sleeps.
+   * nxsem_timedwait() sleeps.
    */
 
   priv->intstate = INTSTATE_WAITING;
@@ -659,11 +670,11 @@ static inline int stm32_i2c_sem_waitdone(FAR struct stm32_i2c_priv_s *priv)
 
       /* Wait until either the transfer is complete or the timeout expires */
 
-      ret = sem_timedwait(&priv->sem_isr, &abstime);
-      if (ret != OK && errno != EINTR)
+      ret = nxsem_timedwait(&priv->sem_isr, &abstime);
+      if (ret < 0 && ret != -EINTR)
         {
           /* Break out of the loop on irrecoverable errors.  This would
-           * include timeouts and mystery errors reported by sem_timedwait.
+           * include timeouts and mystery errors reported by nxsem_timedwait.
            * NOTE that we try again if we are awakened by a signal (EINTR).
            */
 
@@ -706,7 +717,7 @@ static inline int stm32_i2c_sem_waitdone(FAR struct stm32_i2c_priv_s *priv)
 
   /* Signal the interrupt handler that we are waiting.  NOTE:  Interrupts
    * are currently disabled but will be temporarily re-enabled below when
-   * sem_timedwait() sleeps.
+   * nxsem_timedwait() sleeps.
    */
 
   priv->intstate = INTSTATE_WAITING;
@@ -816,7 +827,7 @@ static inline void stm32_i2c_sem_waitstop(FAR struct stm32_i2c_priv_s *priv)
 
 static inline void stm32_i2c_sem_post(struct stm32_i2c_priv_s *priv)
 {
-  sem_post(&priv->sem_excl);
+  nxsem_post(&priv->sem_excl);
 }
 
 /************************************************************************************
@@ -829,15 +840,15 @@ static inline void stm32_i2c_sem_post(struct stm32_i2c_priv_s *priv)
 
 static inline void stm32_i2c_sem_init(FAR struct stm32_i2c_priv_s *priv)
 {
-  sem_init(&priv->sem_excl, 0, 1);
+  nxsem_init(&priv->sem_excl, 0, 1);
 
 #ifndef CONFIG_I2C_POLLED
   /* This semaphore is used for signaling and, hence, should not have
    * priority inheritance enabled.
    */
 
-  sem_init(&priv->sem_isr, 0, 0);
-  sem_setprotocol(&priv->sem_isr, SEM_PRIO_NONE);
+  nxsem_init(&priv->sem_isr, 0, 0);
+  nxsem_setprotocol(&priv->sem_isr, SEM_PRIO_NONE);
 #endif
 }
 
@@ -851,9 +862,9 @@ static inline void stm32_i2c_sem_init(FAR struct stm32_i2c_priv_s *priv)
 
 static inline void stm32_i2c_sem_destroy(FAR struct stm32_i2c_priv_s *priv)
 {
-  sem_destroy(&priv->sem_excl);
+  nxsem_destroy(&priv->sem_excl);
 #ifndef CONFIG_I2C_POLLED
-  sem_destroy(&priv->sem_isr);
+  nxsem_destroy(&priv->sem_isr);
 #endif
 }
 
@@ -1250,12 +1261,24 @@ static int stm32_i2c_isr_process(struct stm32_i2c_priv_s *priv)
   priv->status = status;
 
   /* Any new message should begin with "Start" condition
-   * Situation priv->msgc == 0 came from DMA RX handler and should be managed
+   * However there were 2 situations where that was not true
+   * Situation 1: priv->msgc == 0 came from DMA RX handler and should
+   * be managed
+   *
+   * Situation 2: If an error is injected that looks like a STOP the
+   * interrupt will be reentered with some status that will be incorrect. This
+   * will ensure that the error handler will clear the interrupt enables and
+   * return the error to the waiting task.
    */
 
   if (priv->dcnt == -1 && priv->msgc != 0 && (status & I2C_SR1_SB) == 0)
     {
+#if defined(CONFIG_STM32_I2C_DMA) || defined(CONFIG_I2C_POLLED)
       return OK;
+#else
+      priv->status |= I2C_SR1_TIMEOUT;
+      goto state_error;
+#endif
     }
 
   /* Check if this is a new transmission so to set up the
@@ -2026,6 +2049,9 @@ static int stm32_i2c_isr_process(struct stm32_i2c_priv_s *priv)
 
       /* Clear interrupt flags */
 
+#if !defined(CONFIG_STM32_I2C_DMA) && !defined(CONFIG_I2C_POLLED)
+state_error:
+#endif
       stm32_i2c_putreg(priv, STM32_I2C_SR1_OFFSET, 0);
 
       priv->dcnt = -1;
@@ -2062,7 +2088,7 @@ static int stm32_i2c_isr_process(struct stm32_i2c_priv_s *priv)
            * and wake it up.
            */
 
-          sem_post(&priv->sem_isr);
+          nxsem_post(&priv->sem_isr);
           priv->intstate = INTSTATE_DONE;
         }
 #endif

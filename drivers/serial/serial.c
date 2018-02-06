@@ -52,6 +52,7 @@
 #include <nuttx/irq.h>
 #include <nuttx/arch.h>
 #include <nuttx/sched.h>
+#include <nuttx/signal.h>
 #include <nuttx/semaphore.h>
 #include <nuttx/fs/fs.h>
 #include <nuttx/serial/serial.h>
@@ -69,8 +70,26 @@
 
 #define uart_putc(ch) up_putc(ch)
 
-#define HALF_SECOND_MSEC 500
-#define HALF_SECOND_USEC 500000L
+/* Check watermark levels */
+
+#if defined(CONFIG_SERIAL_IFLOWCONTROL) && \
+    defined(CONFIG_SERIAL_IFLOWCONTROL_WATERMARKS)
+#  if CONFIG_SERIAL_IFLOWCONTROL_LOWER_WATERMARK < 1
+#    warning CONFIG_SERIAL_IFLOWCONTROL_LOWER_WATERMARK too small
+#  endif
+#  if CONFIG_SERIAL_IFLOWCONTROL_UPPER_WATERMARK > 99
+#    warning CONFIG_SERIAL_IFLOWCONTROL_UPPER_WATERMARK too large
+#  endif
+#  if CONFIG_SERIAL_IFLOWCONTROL_LOWER_WATERMARK >= CONFIG_SERIAL_IFLOWCONTROL_UPPER_WATERMARK
+#    warning CONFIG_SERIAL_IFLOWCONTROL_LOWER_WATERMARK too large
+#    warning Must be less than CONFIG_SERIAL_IFLOWCONTROL_UPPER_WATERMARK
+#  endif
+#endif
+
+/* Timing */
+
+#define POLL_DELAY_MSEC 1
+#define POLL_DELAY_USEC 1000
 
 /************************************************************************************
  * Private Types
@@ -133,34 +152,41 @@ static const struct file_operations g_serialops =
 
 static int uart_takesem(FAR sem_t *sem, bool errout)
 {
-  /* Loop, ignoring interrupts, until we have successfully acquired the semaphore */
+  int ret;
 
-  while (sem_wait(sem) != OK)
+  do
     {
-      /* The only case that an error should occur here is if the wait was awakened
-       * by a signal.
-       */
+      /* Take the semaphore (perhaps waiting) */
 
-      ASSERT(get_errno() == EINTR);
-
-      /* When the signal is received, should we errout? Or should we just continue
-       * waiting until we have the semaphore?
-       */
-
-      if (errout)
+      ret = nxsem_wait(sem);
+      if (ret < 0)
         {
-          return -EINTR;
+          /* The only case that an error should occur here is if the wait was
+           * awakened by a signal.
+           */
+
+          DEBUGASSERT(ret == -EINTR);
+
+          /* When the signal is received, should we errout? Or should we just
+           * continue waiting until we have the semaphore?
+           */
+
+          if (errout)
+            {
+              return ret;
+            }
         }
     }
+  while (ret == -EINTR);
 
-  return OK;
+  return ret;
 }
 
 /************************************************************************************
  * Name: uart_givesem
  ************************************************************************************/
 
-#define uart_givesem(sem) (void)sem_post(sem)
+#define uart_givesem(sem) (void)nxsem_post(sem)
 
 /****************************************************************************
  * Name: uart_pollnotify
@@ -184,7 +210,7 @@ static void uart_pollnotify(FAR uart_dev_t *dev, pollevent_t eventset)
           if (fds->revents != 0)
             {
               finfo("Report events: %02x\n", fds->revents);
-              sem_post(fds->sem);
+              nxsem_post(fds->sem);
             }
         }
     }
@@ -445,9 +471,9 @@ static int uart_tcdrain(FAR uart_dev_t *dev)
           while (!uart_txempty(dev))
             {
 #ifndef CONFIG_DISABLE_SIGNALS
-              usleep(HALF_SECOND_USEC);
+              nxsig_usleep(POLL_DELAY_USEC);
 #else
-              up_mdelay(HALF_SECOND_MSEC);
+              up_mdelay(POLL_DELAY_MSEC);
 #endif
             }
          }
@@ -650,12 +676,12 @@ static int uart_close(FAR struct file *filep)
    * a thread currently blocking on any of them.
    */
 
-  sem_reset(&dev->xmitsem,  0);
-  sem_reset(&dev->recvsem,  0);
-  sem_reset(&dev->xmit.sem, 1);
-  sem_reset(&dev->recv.sem, 1);
+  nxsem_reset(&dev->xmitsem,  0);
+  nxsem_reset(&dev->recvsem,  0);
+  nxsem_reset(&dev->xmit.sem, 1);
+  nxsem_reset(&dev->recv.sem, 1);
 #ifndef CONFIG_DISABLE_POLL
-  sem_reset(&dev->pollsem,  1);
+  nxsem_reset(&dev->pollsem,  1);
 #endif
 
   uart_givesem(&dev->closesem);
@@ -987,7 +1013,7 @@ static ssize_t uart_read(FAR struct file *filep, FAR char *buffer, size_t buflen
       (void)uart_rxflowcontrol(dev, nbuffered, false);
     }
 #else
-  /* If the RX  buffer empty */
+  /* Is the RX buffer empty? */
 
   if (rxbuf->head == rxbuf->tail)
     {
@@ -1532,21 +1558,21 @@ int uart_register(FAR const char *path, FAR uart_dev_t *dev)
 {
   /* Initialize semaphores */
 
-  sem_init(&dev->xmit.sem, 0, 1);
-  sem_init(&dev->recv.sem, 0, 1);
-  sem_init(&dev->closesem, 0, 1);
-  sem_init(&dev->xmitsem,  0, 0);
-  sem_init(&dev->recvsem,  0, 0);
+  nxsem_init(&dev->xmit.sem, 0, 1);
+  nxsem_init(&dev->recv.sem, 0, 1);
+  nxsem_init(&dev->closesem, 0, 1);
+  nxsem_init(&dev->xmitsem,  0, 0);
+  nxsem_init(&dev->recvsem,  0, 0);
 #ifndef CONFIG_DISABLE_POLL
-  sem_init(&dev->pollsem,  0, 1);
+  nxsem_init(&dev->pollsem,  0, 1);
 #endif
 
   /* The recvsem and xmitsem are used for signaling and, hence, should not have
    * priority inheritance enabled.
    */
 
-  sem_setprotocol(&dev->xmitsem, SEM_PRIO_NONE);
-  sem_setprotocol(&dev->recvsem, SEM_PRIO_NONE);
+  nxsem_setprotocol(&dev->xmitsem, SEM_PRIO_NONE);
+  nxsem_setprotocol(&dev->recvsem, SEM_PRIO_NONE);
 
   /* Register the serial driver */
 
@@ -1573,7 +1599,7 @@ void uart_datareceived(FAR uart_dev_t *dev)
       /* Yes... wake it up */
 
       dev->recvwaiting = false;
-      (void)sem_post(&dev->recvsem);
+      (void)nxsem_post(&dev->recvsem);
     }
 
   /* Notify all poll/select waiters that they can read from the recv buffer */
@@ -1601,7 +1627,7 @@ void uart_datasent(FAR uart_dev_t *dev)
       /* Yes... wake it up */
 
       dev->xmitwaiting = false;
-      (void)sem_post(&dev->xmitsem);
+      (void)nxsem_post(&dev->xmitsem);
     }
 
   /* Notify all poll/select waiters that they can write to xmit buffer */
@@ -1653,7 +1679,7 @@ void uart_connected(FAR uart_dev_t *dev, bool connected)
           /* Yes... wake it up */
 
           dev->xmitwaiting = false;
-          (void)sem_post(&dev->xmitsem);
+          (void)nxsem_post(&dev->xmitsem);
         }
 
       /* Is there a thread waiting for read data?  */
@@ -1663,7 +1689,7 @@ void uart_connected(FAR uart_dev_t *dev, bool connected)
           /* Yes... wake it up */
 
           dev->recvwaiting = false;
-          (void)sem_post(&dev->recvsem);
+          (void)nxsem_post(&dev->recvsem);
         }
 
       /* Notify all poll/select waiters that a hangup occurred */

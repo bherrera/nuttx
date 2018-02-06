@@ -396,11 +396,23 @@ static uint16_t tcpsend_eventhandler(FAR struct net_driver_s *dev,
 
   else if ((flags & TCP_DISCONN_EVENTS) != 0)
     {
+      FAR struct socket *psock = pstate->snd_sock;
+
       ninfo("Lost connection\n");
 
-      /* Report not connected */
+      /* We could get here recursively through the callback actions of
+       * tcp_lost_connection().  So don't repeat that action if we have
+       * already been disconnected.
+       */
 
-      tcp_lost_connection(pstate->snd_sock, pstate->snd_cb, flags);
+      DEBUGASSERT(psock != NULL);
+      if (_SS_ISCONNECTED(psock->s_flags))
+         {
+           /* Report not connected */
+
+           tcp_lost_connection(psock, pstate->snd_cb, flags);
+         }
+
       pstate->snd_sent = -ENOTCONN;
       goto end_wait;
     }
@@ -599,7 +611,7 @@ end_wait:
 
   /* Wake up the waiting thread */
 
-  sem_post(&pstate->snd_sem);
+  nxsem_post(&pstate->snd_sem);
   return flags;
 }
 
@@ -712,7 +724,7 @@ static inline void send_txnotify(FAR struct socket *psock,
 ssize_t psock_tcp_send(FAR struct socket *psock,
                        FAR const void *buf, size_t len)
 {
-  FAR struct tcp_conn_s *conn = (FAR struct tcp_conn_s *)psock->s_conn;
+  FAR struct tcp_conn_s *conn;
   struct send_s state;
   int errcode;
   int ret = OK;
@@ -792,8 +804,8 @@ ssize_t psock_tcp_send(FAR struct socket *psock,
    * priority inheritance enabled.
    */
 
-  (void)sem_init(&state.snd_sem, 0, 0);    /* Doesn't really fail */
-  (void)sem_setprotocol(&state.snd_sem, SEM_PRIO_NONE);
+  (void)nxsem_init(&state.snd_sem, 0, 0);    /* Doesn't really fail */
+  (void)nxsem_setprotocol(&state.snd_sem, SEM_PRIO_NONE);
 
   state.snd_sock      = psock;             /* Socket descriptor to use */
   state.snd_buflen    = len;               /* Number of bytes to send */
@@ -844,7 +856,7 @@ ssize_t psock_tcp_send(FAR struct socket *psock,
         }
     }
 
-  sem_destroy(&state.snd_sem);
+  nxsem_destroy(&state.snd_sem);
   net_unlock();
 
   /* Set the socket state to idle */

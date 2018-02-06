@@ -1,7 +1,8 @@
 /****************************************************************************
  * fs/vfs/fs_open.c
  *
- *   Copyright (C) 2007-2009, 2011-2012, 2016-2017 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2009, 2011-2012, 2016-2017 Gregory Nutt. All rights
+ *     reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -99,14 +100,20 @@ int open(const char *path, int oflags, ...)
   int ret;
   int fd;
 
+  /* open() is a cancellation point */
+
+  (void)enter_cancellation_point();
+
+  if (path == NULL)
+    {
+      set_errno(EINVAL);
+      goto errout;
+    }
+
 #ifdef CONFIG_FILE_MODE
 #  ifdef CONFIG_CPP_HAVE_WARNING
 #    warning "File creation not implemented"
 #  endif
-
-  /* open() is a cancellation point */
-
-  (void)enter_cancellation_point();
 
   /* If the file is opened for creation, then get the mode bits */
 
@@ -210,12 +217,11 @@ int open(const char *path, int oflags, ...)
 
   /* Get the file structure corresponding to the file descriptor. */
 
-  filep = fs_getfilep(fd);
-  if (!filep)
+  ret = fs_getfilep(fd, &filep);
+  if (ret < 0)
     {
-      /* The errno value has already been set */
-
-      goto errout;
+      ret = -ret;
+      goto errout_with_inode;
     }
 
   /* Perform the driver open operation.  NOTE that the open method may be

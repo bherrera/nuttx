@@ -1,7 +1,7 @@
 /****************************************************************************
  * sched/timer/timer_create.c
  *
- *   Copyright (C) 2007-2009, 2011, 2014-2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2009, 2011, 2014-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -146,7 +146,7 @@ static FAR struct posix_timer_s *timer_allocate(void)
  *     asynchronous notification.  evp may be NULL (see above).
  *   timerid - The pre-thread timer created by the call to timer_create().
  *
- * Return Value:
+ * Returned Value:
  *   If the call succeeds, timer_create() will return 0 (OK) and update the
  *   location referenced by timerid to a timer_t, which can be passed to the
  *   other per-thread timer calls.  If an error occurs, the function will
@@ -193,6 +193,7 @@ int timer_create(clockid_t clockid, FAR struct sigevent *evp,
   ret = timer_allocate();
   if (!ret)
     {
+      wd_delete(wdog);
       set_errno(EAGAIN);
       return ERROR;
     }

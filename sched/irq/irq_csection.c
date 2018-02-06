@@ -1,7 +1,7 @@
 /****************************************************************************
  * sched/irq/irq_csection.c
  *
- *   Copyright (C) 2016-2017 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2016-2018 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -99,7 +99,7 @@ volatile uint8_t g_cpu_nestcount[CONFIG_SMP_NCPUS];
  *     spinlock.
  *   - Another task on CPUm attempts to enter the critical section but has
  *     to wait, spinning to get g_cpu_irqlock with interrupts disabled.
- *   - The task on CPUn causes a new task to become ready-torun and the
+ *   - The task on CPUn causes a new task to become ready-to-run and the
  *     scheduler selects CPUm.  CPUm is requested to pause via a pause
  *     interrupt.
  *   - But the task on CPUm is also attempting to enter the critical
@@ -521,8 +521,7 @@ void leave_critical_section(irqstate_t flags)
                    * because we were within a critical section then.
                    */
 
-                  if (g_pendingtasks.head != NULL &&
-                      !spin_islocked(&g_cpu_schedlock))
+                  if (g_pendingtasks.head != NULL && !sched_islocked_global())
                     {
                       /* Release any ready-to-run tasks that have collected
                        * in g_pendingtasks.  NOTE: This operation has a very
@@ -587,10 +586,10 @@ void leave_critical_section(irqstate_t flags)
  *   the IRQ lock is also set UNLESS the CPU starting the task is the
  *   holder of the IRQ lock.
  *
- * Inputs:
+ * Input Parameters:
  *   rtcb - Points to the blocked TCB that is ready-to-run
  *
- * Return Value:
+ * Returned Value:
  *   true  - IRQs are locked by a different CPU.
  *   false - IRQs are unlocked OR if they are locked BUT this CPU
  *           is the holder of the lock.
@@ -615,6 +614,15 @@ bool irq_cpu_locked(int cpu)
 
       return false;
     }
+
+#if defined(CONFIG_ARCH_HAVE_FETCHADD) && !defined(CONFIG_ARCH_GLOBAL_IRQDISABLE)
+  /* If the global lockcount has been incremented then simply return true */
+
+  if (g_global_lockcount > 0)
+    {
+      return true;
+    }
+#endif
 
   /* Test if g_cpu_irqlock is locked.  We don't really need to use check
    * g_cpu_irqlock to do this, we can use the g_cpu_set.
@@ -641,7 +649,7 @@ bool irq_cpu_locked(int cpu)
     {
       /* In this case g_cpu_irqlock should be unlocked.  However, if
        * the lock was established in the interrupt handler AND there are
-       * no bits set in g_cpu_irqset, that probabaly means only that
+       * no bits set in g_cpu_irqset, that probably means only that
        * critical section was established from an interrupt handler.
        * Return false in either case.
        */

@@ -1,7 +1,7 @@
 /****************************************************************************
  * arch/arm/src/stm32/stm32f40xxx_dma.c
  *
- *   Copyright (C) 2011-2013, 2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2011-2013, 2016-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -252,21 +252,26 @@ static inline void dmast_putreg(struct stm32_dma_s *dmast, uint32_t offset, uint
 
 static void stm32_dmatake(FAR struct stm32_dma_s *dmast)
 {
-  /* Take the semaphore (perhaps waiting) */
+  int ret;
 
-  while (sem_wait(&dmast->sem) != 0)
+  do
     {
-      /* The only case that an error should occur here is if the wait was awakened
-       * by a signal.
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&dmast->sem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
        */
 
-      ASSERT(errno == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 static inline void stm32_dmagive(FAR struct stm32_dma_s *dmast)
 {
-  (void)sem_post(&dmast->sem);
+  (void)nxsem_post(&dmast->sem);
 }
 
 /************************************************************************************
@@ -477,7 +482,7 @@ void weak_function up_dmainitialize(void)
   for (stream = 0; stream < DMA_NSTREAMS; stream++)
     {
       dmast = &g_dma[stream];
-      sem_init(&dmast->sem, 0, 1);
+      nxsem_init(&dmast->sem, 0, 1);
 
       /* Attach DMA interrupt vectors */
 
@@ -519,7 +524,7 @@ void weak_function up_dmainitialize(void)
  *   Hmm.. I suppose this interface could be extended to make a non-blocking
  *   version.  Feel free to do that if that is what you need.
  *
- * Input parameter:
+ * Input Parameters:
  *   dmamap - Identifies the stream/channel resource. For the STM32 F4, this
  *     is a bit-encoded  value as provided by the DMAMAP_* definitions
  *     in chip/stm32f40xxx_dma.h
@@ -858,7 +863,7 @@ size_t stm32_dmaresidual(DMA_HANDLE handle)
  *   of the processor. Note that this only applies to memory addresses, it
  *   will return false for any peripheral address.
  *
- * Returned value:
+ * Returned Value:
  *   True, if transfer is possible.
  *
  ****************************************************************************/

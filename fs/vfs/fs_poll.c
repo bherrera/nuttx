@@ -1,7 +1,7 @@
 /****************************************************************************
  * fs/vfs/fs_poll.c
  *
- *   Copyright (C) 2008-2009, 2012-2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2008-2009, 2012-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -62,7 +62,7 @@
  * Pre-processor Definitions
  ****************************************************************************/
 
-#define poll_semgive(sem) sem_post(sem)
+#define poll_semgive(sem) nxsem_post(sem)
 
 /****************************************************************************
  * Private Functions
@@ -74,21 +74,18 @@
 
 static int poll_semtake(FAR sem_t *sem)
 {
+  int ret;
+
   /* Take the semaphore (perhaps waiting) */
 
-  if (sem_wait(sem) < 0)
-    {
-      int errcode = get_errno();
+  ret = nxsem_wait(sem);
 
-      /* The only case that an error should occur here is if the wait were
-       * awakened by a signal.
-       */
+  /* The only case that an error should occur here is if the wait were
+   * awakened by a signal.
+   */
 
-      DEBUGASSERT(errcode == EINTR);
-      return -errcode;
-    }
-
-  return OK;
+  DEBUGASSERT(ret == OK || ret == -EINTR);
+  return ret;
 }
 
 /****************************************************************************
@@ -298,7 +295,7 @@ int file_poll(FAR struct file *filep, FAR struct pollfd *fds, bool setup)
               fds->revents |= (fds->events & (POLLIN | POLLOUT));
               if (fds->revents != 0)
                 {
-                  sem_post(fds->sem);
+                  nxsem_post(fds->sem);
                 }
             }
 
@@ -324,7 +321,8 @@ int file_poll(FAR struct file *filep, FAR struct pollfd *fds, bool setup)
  *   setup - true: Setup up the poll; false: Teardown the poll
  *
  * Returned Value:
- *  0: Success; Negated errno on failure
+ *  Zero (OK) is returned on success; a negated errno value is returned on
+ *  any failure.
  *
  ****************************************************************************/
 
@@ -332,18 +330,17 @@ int file_poll(FAR struct file *filep, FAR struct pollfd *fds, bool setup)
 int fdesc_poll(int fd, FAR struct pollfd *fds, bool setup)
 {
   FAR struct file *filep;
+  int ret;
 
   /* Get the file pointer corresponding to this file descriptor */
 
-  filep = fs_getfilep(fd);
-  if (!filep)
+  ret = fs_getfilep(fd, &filep);
+  if (ret < 0)
     {
-      /* The errno value has already been set */
-
-      int errorcode = get_errno();
-      DEBUGASSERT(errorcode > 0);
-      return -errorcode;
+      return ret;
     }
+
+  DEBUGASSERT(filep != NULL);
 
   /* Let file_poll() do the rest */
 
@@ -360,14 +357,14 @@ int fdesc_poll(int fd, FAR struct pollfd *fds, bool setup)
  *   occurred for any of  the  file  descriptors,  then  poll() blocks until
  *   one of the events occurs.
  *
- * Inputs:
+ * Input Parameters:
  *   fds  - List of structures describing file descriptors to be monitored
  *   nfds - The number of entries in the list
  *   timeout - Specifies an upper limit on the time for which poll() will
  *     block in milliseconds.  A negative value of timeout means an infinite
  *     timeout.
  *
- * Return:
+ * Returned Value:
  *   On success, the number of structures that have non-zero revents fields.
  *   A value of 0 indicates that the call timed out and no file descriptors
  *   were ready.  On error, -1 is returned, and errno is set appropriately:
@@ -397,8 +394,8 @@ int poll(FAR struct pollfd *fds, nfds_t nfds, int timeout)
    * priority inheritance enabled.
    */
 
-  sem_init(&sem, 0, 0);
-  sem_setprotocol(&sem, SEM_PRIO_NONE);
+  nxsem_init(&sem, 0, 0);
+  nxsem_setprotocol(&sem, SEM_PRIO_NONE);
 
   ret = poll_setup(fds, nfds, &sem);
   if (ret >= 0)
@@ -434,11 +431,11 @@ int poll(FAR struct pollfd *fds, nfds_t nfds, int timeout)
            * or for the specified timeout to elapse with no event.
            *
            * NOTE: If a poll event is pending (i.e., the semaphore has already
-           * been incremented), sem_tickwait() will not wait, but will return
+           * been incremented), nxsem_tickwait() will not wait, but will return
            * immediately.
            */
 
-           ret = sem_tickwait(&sem, clock_systimer(), ticks);
+           ret = nxsem_tickwait(&sem, clock_systimer(), ticks);
            if (ret < 0)
              {
                if (ret == -ETIMEDOUT)
@@ -471,7 +468,7 @@ int poll(FAR struct pollfd *fds, nfds_t nfds, int timeout)
         }
     }
 
-  sem_destroy(&sem);
+  nxsem_destroy(&sem);
   leave_cancellation_point();
 
   /* Check for errors */

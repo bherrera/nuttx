@@ -1,7 +1,7 @@
 /*******************************************************************************
  * arch/arm/src/samdl/sam_i2c_master.c
  *
- *   Copyright (C) 2013-2014 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2013-2014, 2017 Gregory Nutt. All rights reserved.
  *   Copyright (C) 2015 Filament - www.filament.com
  *   Author: Matt Thompson <mthompson@hexwave.com>
  *   Author: Alan Carvalho de Assis <acassis@gmail.com>
@@ -61,6 +61,7 @@
 #include <nuttx/irq.h>
 #include <nuttx/wdog.h>
 #include <nuttx/clock.h>
+#include <nuttx/semaphore.h>
 #include <nuttx/i2c/i2c_master.h>
 
 #include <arch/board/board.h>
@@ -200,7 +201,7 @@ static void i2c_putreg32(struct sam_i2c_dev_s *priv, uint32_t regval,
                          unsigned int offset);
 
 static void i2c_takesem(sem_t * sem);
-#define i2c_givesem(sem) (sem_post(sem))
+#define i2c_givesem(sem) (nxsem_post(sem))
 
 #ifdef CONFIG_SAM_I2C_REGDEBUG
 static bool i2c_checkreg(struct sam_i2c_dev_s *priv, bool wr,
@@ -460,18 +461,23 @@ static void i2c_putreg32(struct sam_i2c_dev_s *priv, uint32_t regval,
  *
  *******************************************************************************/
 
-static void i2c_takesem(sem_t * sem)
+static void i2c_takesem(sem_t *sem)
 {
-  /* Take the semaphore (perhaps waiting) */
+  int ret;
 
-  while (sem_wait(sem) != 0)
+  do
     {
-      /* The only case that an error should occr here is if the wait was
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(sem);
+
+      /* The only case that an error should occur here is if the wait was
        * awakened by a signal.
        */
 
-      ASSERT(errno == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /*******************************************************************************
@@ -619,15 +625,16 @@ static inline void i2c_putrel(struct sam_i2c_dev_s *priv, unsigned int offset,
 static int i2c_wait_for_bus(struct sam_i2c_dev_s *priv, unsigned int size)
 {
   struct timespec ts;
+  int ret;
 
   clock_gettime(CLOCK_REALTIME, &ts);
   ts.tv_nsec += 200e3;
 
-  if (sem_timedwait(&priv->waitsem, (const struct timespec *)&ts) != OK)
+  ret = nxsem_timedwait(&priv->waitsem, (const struct timespec *)&ts);
+  if (ret < 0)
     {
-      int errcode = errno;
-      i2cinfo("timedwait error %d\n", errcode);
-      return -errcode;
+      i2cinfo("timedwait error %d\n", ret);
+      return ret;
     }
 
   return priv->result;
@@ -650,7 +657,7 @@ static void i2c_wakeup(struct sam_i2c_dev_s *priv, int result)
   /* Wake up the waiting thread with the result of the transfer */
 
   priv->result = result;
-  sem_post(&priv->waitsem);
+  nxsem_post(&priv->waitsem);
 }
 
 /*******************************************************************************
@@ -1344,8 +1351,8 @@ struct i2c_master_s *sam_i2c_master_initialize(int bus)
   priv->dev.ops = &g_i2cops;
   priv->flags = 0;
 
-  (void)sem_init(&priv->exclsem, 0, 1);
-  (void)sem_init(&priv->waitsem, 0, 0);
+  (void)nxsem_init(&priv->exclsem, 0, 1);
+  (void)nxsem_init(&priv->waitsem, 0, 0);
 
   /* Perform repeatable I2C hardware initialization */
 
@@ -1374,8 +1381,8 @@ int sam_i2c_uninitialize(FAR struct i2c_master_s *dev)
 
   /* Reset data structures */
 
-  sem_destroy(&priv->exclsem);
-  sem_destroy(&priv->waitsem);
+  nxsem_destroy(&priv->exclsem);
+  nxsem_destroy(&priv->waitsem);
 
   /* Detach Interrupt Handler */
 

@@ -1,7 +1,7 @@
 /****************************************************************************
  * libc/stdio/lib_rawsistream.c
  *
- *   Copyright (C) 2014 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2014, 2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -37,9 +37,13 @@
  * Included Files
  ****************************************************************************/
 
+#include <nuttx/config.h>
+
 #include <unistd.h>
 #include <assert.h>
 #include <errno.h>
+
+#include <nuttx/fs/fs.h>
 
 #include "libc.h"
 
@@ -61,7 +65,7 @@ static int rawsistream_getc(FAR struct lib_sistream_s *this)
 
   /* Attempt to read one character */
 
-  nwritten = read(rthis->fd, &ch, 1);
+  nwritten = _NX_READ(rthis->fd, &ch, 1);
   if (nwritten == 1)
     {
       this->nget++;
@@ -100,7 +104,7 @@ static off_t rawsistream_seek(FAR struct lib_sistream_s *this, off_t offset,
  * Description:
  *   Initializes a stream for use with a file descriptor.
  *
- * Input parameters:
+ * Input Parameters:
  *   instream - User allocated, uninitialized instance of struct
  *              lib_rawsistream_s to be initialized.
  *   fd       - User provided file/socket descriptor (must have been opened

@@ -43,10 +43,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <semaphore.h>
 #include <mqueue.h>
 #include <errno.h>
 #include <debug.h>
 
+#include <nuttx/signal.h>
+#include <nuttx/semaphore.h>
 #include <nuttx/nx/nx.h>
 #include <nuttx/nx/nxmu.h>
 
@@ -57,15 +60,15 @@
  ****************************************************************************/
 
 /* Each client is assigned a unique ID using the g_nxcid counter.  That
- * counter increments as each new counter is created and is* protected for
- * thread safefy with g_nxlibsem.  Note that these are the only global values
+ * counter increments as each new counter is created and is protected for
+ * thread safety with g_nxlibsem.  Note that these are the only global values
  * in the NX implementation.  This is because the client ID must be unique
  * even across all server instances.
  *
  * NOTE: that client ID 0 is reserved for the server(s) themselves
  */
 
-static sem_t    g_nxlibsem = { 1 };
+static sem_t    g_nxlibsem =  SEM_INITIALIZER(1);
 static uint32_t g_nxcid    = 1;
 
 /****************************************************************************
@@ -90,7 +93,7 @@ static uint32_t g_nxcid    = 1;
  * Input Parameters:
  *   svrmqname - The name for the server incoming message queue
  *
- * Return:
+ * Returned Value:
  *   Success: A non-NULL handle used with subsequent NX accesses
  *   Failure:  NULL is returned and errno is set appropriately
  *
@@ -188,7 +191,8 @@ NXHANDLE nx_connectinstance(FAR const char *svrmqname)
           gerr("ERROR: nx_message failed: %d\n", errno);
           goto errout_with_wmq;
         }
-      usleep(300000);
+
+      _SIG_USLEEP(300000);
     }
   while (conn->state != NX_CLISTATE_CONNECTED);
 #endif

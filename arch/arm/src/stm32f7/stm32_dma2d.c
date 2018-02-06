@@ -53,7 +53,6 @@
 #include <nuttx/semaphore.h>
 #include <nuttx/video/fb.h>
 
-#include <arch/chip/dma2d.h>
 #include <arch/board/board.h>
 
 #include "up_arch.h"
@@ -463,12 +462,11 @@ static int stm32_dma2dirq(int irq, void *context, FAR void *arg)
   if (priv->wait)
     {
 
-      int ret = sem_post(priv->sem);
+      int ret = nxsem_post(priv->sem);
 
-      if (ret != OK)
+      if (ret < 0)
         {
-          lcderr("ERROR: sem_post() failed\n");
-          return ret;
+          lcderr("ERROR: nxsem_post() failed\n");
         }
     }
 
@@ -483,7 +481,7 @@ static int stm32_dma2dirq(int irq, void *context, FAR void *arg)
  *   loading or dma transfer was completed.
  *   Note! The caller must use this function within a critical section.
  *
- * Return:
+ * Returned Value:
  *   On success OK otherwise ERROR
  *
  ****************************************************************************/
@@ -502,15 +500,15 @@ static int stm32_dma2d_waitforirq(void)
 
       priv->wait = true;
 
-      ret = sem_wait(priv->sem);
+      ret = nxsem_wait(priv->sem);
 
       /* irq or an error occurs, reset the wait flag */
 
       priv->wait = false;
 
-      if (ret != OK)
+      if (ret < 0)
         {
-          lcderr("ERROR: sem_wait() failed\n");
+          lcderr("ERROR: nxsem_wait() failed\n");
           return ret;
         }
     }
@@ -528,7 +526,7 @@ static int stm32_dma2d_waitforirq(void)
  * Parameter:
  *   pfcreg - PFC control Register
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error - -EINVAL
  *
@@ -616,7 +614,7 @@ static int stm32_dma2d_start(void)
  * Parameter:
  *   layer - Reference to the common layer state structure
  *
- * Return:
+ * Returned Value:
  *   memory address
  *
  ****************************************************************************/
@@ -642,7 +640,7 @@ static uint32_t stm32_dma2d_memaddress(FAR const struct stm32_dma2d_s *layer,
  * Parameter:
  *   layer - Reference to the common layer state structure
  *
- * Return:
+ * Returned Value:
  *   line offset
  *
  ****************************************************************************/
@@ -666,7 +664,7 @@ static fb_coord_t stm32_dma2d_lineoffset(FAR const struct stm32_dma2d_s *layer,
  *   layer - Reference to the common layer state structure
  *   fmt   - Reference to the location to store the pixel format
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -725,7 +723,7 @@ static int stm32_dma2d_pixelformat(uint8_t fmt, uint8_t *fmtmap)
  *   layer - Reference to the common layer state structure
  *   bpp   - Reference to the location to store the pixel format
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -766,7 +764,7 @@ static int stm32_dma2d_bpp(uint8_t fmt, uint8_t *bpp)
  * Description:
  *   Get a free layer id
  *
- * Return:
+ * Returned Value:
  *   The number of the free layer
  *   -1 if no free layer is available
  *
@@ -793,7 +791,7 @@ static int stm32_dma2d_lfreelid(void)
  * Description:
  *   Allocate a new layer structure
  *
- * Return:
+ * Returned Value:
  *   A new allocated layer structure or NULL on error.
  *
  ****************************************************************************/
@@ -882,7 +880,7 @@ static void stm32_dma2d_llayerscleanup(void)
  * Description:
  *   Helper to validate if the layer is valid
  *
- * Return:
+ * Returned Value:
  *   true if validates otherwise false
  *
  ****************************************************************************/
@@ -904,7 +902,7 @@ static inline bool stm32_dma2d_lvalidate(FAR const struct stm32_dma2d_s *layer)
  *   ypos    - The y position inside the whole layer
  *   area    - the area inside the whole layer
  *
- * Return:
+ * Returned Value:
  *   true if area is inside the whole layer otherwise false
  *
  ****************************************************************************/
@@ -1158,7 +1156,7 @@ static void stm32_dma2d_lpfc(FAR const struct stm32_dma2d_s *layer,
  *   layer  - Reference to the layer control structure
  *   vinfo  - Reference to the video info structure
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -1173,9 +1171,9 @@ static int stm32_dma2dgetvideoinfo(FAR struct dma2d_layer_s *layer,
 
   if (stm32_dma2d_lvalidate(priv) && vinfo)
     {
-      sem_wait(priv->lock);
+      nxsem_wait(priv->lock);
       memcpy(vinfo, &priv->vinfo, sizeof(struct fb_videoinfo_s));
-      sem_post(priv->lock);
+      nxsem_post(priv->lock);
 
       return OK;
     }
@@ -1195,7 +1193,7 @@ static int stm32_dma2dgetvideoinfo(FAR struct dma2d_layer_s *layer,
  *   planeno - Number of the plane
  *   pinfo   - Reference to the plane info structure
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -1210,9 +1208,9 @@ static int stm32_dma2dgetplaneinfo(FAR struct dma2d_layer_s *layer, int planeno,
 
   if (stm32_dma2d_lvalidate(priv) && pinfo && planeno == 0)
     {
-      sem_wait(priv->lock);
+      nxsem_wait(priv->lock);
       memcpy(pinfo, &priv->pinfo, sizeof(struct fb_planeinfo_s));
-      sem_post(priv->lock);
+      nxsem_post(priv->lock);
 
       return OK;
     }
@@ -1231,7 +1229,7 @@ static int stm32_dma2dgetplaneinfo(FAR struct dma2d_layer_s *layer, int planeno,
  *   layer - Reference to the layer structure
  *   lid   - Reference to store the layer id
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -1245,9 +1243,9 @@ static int stm32_dma2dgetlid(FAR struct dma2d_layer_s *layer, int *lid)
 
   if (stm32_dma2d_lvalidate(priv) && lid)
     {
-      sem_wait(priv->lock);
+      nxsem_wait(priv->lock);
       *lid = priv->lid;
-      sem_post(priv->lock);
+      nxsem_post(priv->lock);
       return OK;
     }
 
@@ -1267,7 +1265,7 @@ static int stm32_dma2dgetlid(FAR struct dma2d_layer_s *layer, int *lid)
  *   layer  - Reference to the layer structure
  *   cmap   - color lookup table with up the 256 entries
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -1283,7 +1281,7 @@ static int stm32_dma2dsetclut(FAR struct dma2d_layer_s *layer,
 
   if (stm32_dma2d_lvalidate(priv) && cmap)
     {
-      sem_wait(priv->lock);
+      nxsem_wait(priv->lock);
 
 #ifdef CONFIG_STM32F7_LTDC_INTERFACE
       if (priv->lid < DMA2D_SHADOW_LAYER)
@@ -1309,7 +1307,7 @@ static int stm32_dma2dsetclut(FAR struct dma2d_layer_s *layer,
 
           ret = ltdc->setclut(ltdc, cmap);
 
-          sem_post(priv->lock);
+          nxsem_post(priv->lock);
 
           return ret;
         }
@@ -1367,7 +1365,7 @@ static int stm32_dma2dsetclut(FAR struct dma2d_layer_s *layer,
           ret = OK;
         }
 
-      sem_post(priv->lock);
+      nxsem_post(priv->lock);
       return ret;
     }
 
@@ -1386,7 +1384,7 @@ static int stm32_dma2dsetclut(FAR struct dma2d_layer_s *layer,
  *   cmap  - Reference to valid color lookup table accept up the 256 color
  *           entries
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -1402,7 +1400,7 @@ static int stm32_dma2dgetclut(FAR struct dma2d_layer_s *layer,
 
   if (stm32_dma2d_lvalidate(priv) && cmap)
     {
-      sem_wait(priv->lock);
+      nxsem_wait(priv->lock);
 
       if (priv->fmt != DMA2D_PF_L8)
         {
@@ -1453,7 +1451,7 @@ static int stm32_dma2dgetclut(FAR struct dma2d_layer_s *layer,
           ret = OK;
         }
 
-      sem_post(priv->lock);
+      nxsem_post(priv->lock);
 
       return ret;
     }
@@ -1478,7 +1476,7 @@ static int stm32_dma2dgetclut(FAR struct dma2d_layer_s *layer,
  *   layer - Reference to the layer structure
  *   alpha - Alpha value
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error - -EINVAL
  *
@@ -1492,9 +1490,9 @@ static int stm32_dma2dsetalpha(FAR struct dma2d_layer_s *layer, uint8_t alpha)
 
   if (stm32_dma2d_lvalidate(priv))
     {
-      sem_wait(priv->lock);
+      nxsem_wait(priv->lock);
       priv->alpha = alpha;
-      sem_post(priv->lock);
+      nxsem_post(priv->lock);
 
       return OK;
     }
@@ -1513,7 +1511,7 @@ static int stm32_dma2dsetalpha(FAR struct dma2d_layer_s *layer, uint8_t alpha)
  *   layer - Reference to the layer structure
  *   alpha - Reference to store the alpha value
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error - -EINVAL
  *
@@ -1527,9 +1525,9 @@ static int stm32_dma2dgetalpha(FAR struct dma2d_layer_s *layer, uint8_t *alpha)
 
   if (stm32_dma2d_lvalidate(priv))
     {
-      sem_wait(priv->lock);
+      nxsem_wait(priv->lock);
       *alpha = priv->alpha;
-      sem_post(priv->lock);
+      nxsem_post(priv->lock);
 
       return OK;
     }
@@ -1550,7 +1548,7 @@ static int stm32_dma2dgetalpha(FAR struct dma2d_layer_s *layer, uint8_t *alpha)
  *   layer - Reference to the layer structure
  *   mode  - Blend mode (see DMA2D_BLEND_*)
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error - -EINVAL
  *
@@ -1578,9 +1576,9 @@ static int stm32_dma2dsetblendmode(FAR struct dma2d_layer_s *layer,
 
   if (stm32_dma2d_lvalidate(priv))
     {
-      sem_wait(priv->lock);
+      nxsem_wait(priv->lock);
       priv->blendmode = mode;
-      sem_post(priv->lock);
+      nxsem_post(priv->lock);
 
       return OK;
     }
@@ -1599,7 +1597,7 @@ static int stm32_dma2dsetblendmode(FAR struct dma2d_layer_s *layer,
  *   layer - Reference to the layer structure
  *   mode  - Reference to store the blend mode
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error - -EINVAL
  *
@@ -1614,9 +1612,9 @@ static int stm32_dma2dgetblendmode(FAR struct dma2d_layer_s *layer,
 
   if (stm32_dma2d_lvalidate(priv) && mode)
     {
-      sem_wait(priv->lock);
+      nxsem_wait(priv->lock);
       *mode = priv->blendmode;
-      sem_post(priv->lock);
+      nxsem_post(priv->lock);
 
       return OK;
     }
@@ -1639,7 +1637,7 @@ static int stm32_dma2dgetblendmode(FAR struct dma2d_layer_s *layer,
  *   src      - Valid reference to the source layer
  *   srcarea  - Valid reference to the selected area of the source layer
  *
- * Return:
+ * Returned Value:
  *    OK        - On success
  *   -EINVAL    - If one of the parameter invalid or if the size of the selected
  *                source area outside the visible area of the destination layer.
@@ -1665,7 +1663,7 @@ static int stm32_dma2dblit(FAR struct dma2d_layer_s *dest,
         stm32_dma2d_lvalidatesize(srclayer, srcarea->xpos,
                                     srcarea->ypos, srcarea))
     {
-      sem_wait(destlayer->lock);
+      nxsem_wait(destlayer->lock);
 
       /* Set output pfc */
 
@@ -1719,7 +1717,7 @@ static int stm32_dma2dblit(FAR struct dma2d_layer_s *dest,
             }
         }
 
-      sem_post(destlayer->lock);
+      nxsem_post(destlayer->lock);
     }
   else
     {
@@ -1748,7 +1746,7 @@ static int stm32_dma2dblit(FAR struct dma2d_layer_s *dest,
  *   back     - Reference to the background layer
  *   backarea - Reference to the selected area of the background layer
  *
- * Return:
+ * Returned Value:
  *    OK        - On success
  *   -EINVAL    - If one of the parameter invalid or if the size of the selected
  *                source area outside the visible area of the destination layer.
@@ -1779,8 +1777,7 @@ static int stm32_dma2dblend(FAR struct dma2d_layer_s *dest,
             stm32_dma2d_lvalidatesize(backlayer, backarea->xpos,
                                         backarea->ypos, backarea))
     {
-
-      sem_wait(destlayer->lock);
+      nxsem_wait(destlayer->lock);
 
       /* Set output pfc */
 
@@ -1833,7 +1830,7 @@ static int stm32_dma2dblend(FAR struct dma2d_layer_s *dest,
             }
         }
 
-      sem_post(destlayer->lock);
+      nxsem_post(destlayer->lock);
     }
   else
     {
@@ -1856,7 +1853,7 @@ static int stm32_dma2dblend(FAR struct dma2d_layer_s *dest,
  *   color    - Color to fill the selected area. Color must be formatted
  *              according to the layer pixel format.
  *
- * Return:
+ * Returned Value:
  *    OK        - On success
  *   -EINVAL    - If one of the parameter invalid or if the size of the selected
  *                area outside the visible area of the layer.
@@ -1875,8 +1872,7 @@ static int stm32_dma2dfillarea(FAR struct dma2d_layer_s *layer,
 
   if (stm32_dma2d_lvalidatesize(priv, area->xpos, area->ypos, area))
     {
-
-      sem_wait(priv->lock);
+      nxsem_wait(priv->lock);
 
       /* Set output pfc */
 
@@ -1913,7 +1909,7 @@ static int stm32_dma2dfillarea(FAR struct dma2d_layer_s *layer,
             }
         }
 
-      sem_post(priv->lock);
+      nxsem_post(priv->lock);
     }
   else
     {
@@ -1933,26 +1929,25 @@ static int stm32_dma2dfillarea(FAR struct dma2d_layer_s *layer,
  * Parameter:
  *   lid - Layer identifier
  *
- * Return:
+ * Returned Value:
  *   Reference to the dma2d layer control structure on success or Null if no
  *   related exist.
  *
  ****************************************************************************/
 
-FAR struct dma2d_layer_s * up_dma2dgetlayer(int lid)
+FAR struct dma2d_layer_s *up_dma2dgetlayer(int lid)
 {
   if (lid < DMA2D_LAYER_NSIZE)
     {
       FAR struct stm32_dma2d_s *priv;
-      sem_wait(&g_lock);
+      nxsem_wait(&g_lock);
       priv = g_layers[lid];
-      sem_post(&g_lock);
+      nxsem_post(&g_lock);
 
       return &priv->dma2d;
     }
 
-  lcderr("ERROR: EINVAL, Unknown layer identifier\n");
-  errno = EINVAL;
+  lcderr("ERROR: lid invalid: %d\n", lid);
   return NULL;
 }
 
@@ -1967,12 +1962,9 @@ FAR struct dma2d_layer_s * up_dma2dgetlayer(int lid)
  *   height - Layer height
  *   fmt    - Pixel format of the layer
  *
- * Return:
+ * Returned Value:
  *   On success - A valid dma2d layer reference
- *   On error   - NULL and errno is set to
- *                -EINVAL if one of the parameter is invalid
- *                -ENOMEM if no memory available or exceeds
- *                 CONFIG_STM32F7_DMA2D_NLAYERS
+ *   On error   - NULL
  *
  ****************************************************************************/
 
@@ -1980,11 +1972,11 @@ FAR struct dma2d_layer_s *up_dma2dcreatelayer(fb_coord_t width,
                                               fb_coord_t height,
                                               uint8_t fmt)
 {
+  FAR struct stm32_dma2d_s *layer = NULL;
   int        ret;
   int        lid;
   uint8_t    fmtmap;
   uint8_t    bpp = 0;
-  FAR struct stm32_dma2d_s *layer = NULL;
 
   lcdinfo("width=%d, height=%d, fmt=%02x \n", width, height, fmt);
 
@@ -1994,13 +1986,12 @@ FAR struct dma2d_layer_s *up_dma2dcreatelayer(fb_coord_t width,
 
   if (ret != OK)
     {
-      errno = -ret;
       return NULL;
     }
 
   ret = stm32_dma2d_bpp(fmt, &bpp);
 
-  sem_wait(&g_lock);
+  nxsem_wait(&g_lock);
 
   /* Get a free layer identifier */
 
@@ -2066,22 +2057,19 @@ FAR struct dma2d_layer_s *up_dma2dcreatelayer(fb_coord_t width,
               kmm_free(layer);
               layer = NULL;
               lcderr("ERROR: ENOMEM, Unable to allocate layer buffer\n");
-              errno = ENOMEM;
             }
         }
       else
         {
           lcderr("ERROR: ENOMEM, unable to allocate layer structure\n");
-          errno = ENOMEM;
         }
     }
   else
     {
       lcderr("ERROR: EINVAL, no free layer available\n");
-      errno = EINVAL;
     }
 
-  sem_post(&g_lock);
+  nxsem_post(&g_lock);
   return (FAR struct dma2d_layer_s *)layer;
 }
 
@@ -2094,7 +2082,7 @@ FAR struct dma2d_layer_s *up_dma2dcreatelayer(fb_coord_t width,
  * Parameter:
  *   layer  - Reference to the layer to remove
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -2109,7 +2097,7 @@ int up_dma2dremovelayer(FAR struct dma2d_layer_s *layer)
 
   if (stm32_dma2d_lvalidate(priv) && priv->lid >= DMA2D_SHADOW_LAYER)
     {
-      sem_wait(priv->lock);
+      nxsem_wait(priv->lock);
 
       /* Check also if the layer id is valid to the layer reference */
 
@@ -2124,7 +2112,7 @@ int up_dma2dremovelayer(FAR struct dma2d_layer_s *layer)
           ret = OK;
         }
 
-      sem_post(priv->lock);
+      nxsem_post(priv->lock);
     }
 
   return ret;
@@ -2136,7 +2124,7 @@ int up_dma2dremovelayer(FAR struct dma2d_layer_s *layer)
  * Description:
  *   Initialize the dma2d controller
  *
- * Return:
+ * Returned Value:
  *   OK - On success
  *   An error if initializing failed.
  *
@@ -2160,15 +2148,15 @@ int up_dma2dinitialize(void)
        * to the driver
        */
 
-      sem_init(&g_lock, 0, 1);
+      nxsem_init(&g_lock, 0, 1);
 
       /* Initialize the semaphore for interrupt handling.  This waitsem
        * semaphore is used for signaling and, hence, should not have
        * priority inheritance enabled.
        */
 
-      sem_init(g_interrupt.sem, 0, 0);
-      sem_setprotocol(g_interrupt.sem, SEM_PRIO_NONE);
+      nxsem_init(g_interrupt.sem, 0, 0);
+      nxsem_setprotocol(g_interrupt.sem, SEM_PRIO_NONE);
 
 #ifdef CONFIG_STM32F7_DMA2D_L8
       /* Enable dma2d transfer and clut loading interrupts only */
@@ -2252,14 +2240,13 @@ void up_dma2duninitialize(void)
  *   layer  - a valid reference to the low level ltdc layer structure
  *   clut   - a pointer to a valid memory region to hold 256 clut colors
  *
- * Return:
+ * Returned Value:
  *   On success - A valid dma2d layer reference
- *   On error   - NULL and errno is set to
- *                -EINVAL if one of the parameter is invalid
+ *   On error   - NULL
  *
  ****************************************************************************/
 
-FAR struct dma2d_layer_s * stm32_dma2dinitltdc(FAR struct stm32_ltdc_s *layer)
+FAR struct dma2d_layer_s *stm32_dma2dinitltdc(FAR struct stm32_ltdc_s *layer)
 {
   int        ret;
   uint8_t    fmt = 0;
@@ -2274,7 +2261,6 @@ FAR struct dma2d_layer_s * stm32_dma2dinitltdc(FAR struct stm32_ltdc_s *layer)
     {
       lcderr("ERROR: Returning -EINVAL, unsupported pixel format: %d\n",
              layer->vinfo.fmt);
-      errno = -EINVAL;
       return NULL;
     }
 

@@ -175,7 +175,7 @@ extern "C"
  *   Hmm.. I suppose this interface could be extended to make a non-blocking
  *   version.  Feel free to do that if that is what you need.
  *
- * Input parameter:
+ * Input Parameters:
  *   chan - Identifies the stream/channel resource
  *     For the STM32 F1, this is simply the channel number as provided by
  *     the DMACHAN_* definitions in chip/stm32f10xxx_dma.h.
@@ -281,7 +281,7 @@ size_t stm32_dmaresidual(DMA_HANDLE handle);
  *   only applies to memory addresses, it will return false for any peripheral
  *   address.
  *
- * Returned value:
+ * Returned Value:
  *   True, if transfer is possible.
  *
  ****************************************************************************/
@@ -326,6 +326,38 @@ void stm32_dmadump(DMA_HANDLE handle, const struct stm32_dmaregs_s *regs,
 #else
 #  define stm32_dmadump(handle,regs,msg)
 #endif
+
+#ifdef CONFIG_STM32_STM32F33XX
+
+/* At this moment only for STM32F33XX family */
+
+/* High performance, zero latency DMA interrupts need some additional
+ * interfaces.
+ */
+
+#ifdef CONFIG_ARCH_HIPRI_INTERRUPT
+
+/****************************************************************************
+ * Name: stm32_dma_intack
+ *
+ * Description:
+ *   Public visible interface to acknowledge interrupts on DMA channel
+ *
+ ****************************************************************************/
+
+void stm32_dma_intack(unsigned int chndx, uint32_t isr);
+
+/****************************************************************************
+ * Name: stm32_dma_intget
+ *
+ * Description:
+ *   Public visible interface to get pending interrupts from DMA channel
+ *
+ ****************************************************************************/
+
+uint32_t stm32_dma_intget(unsigned int chndx);
+#endif  /* CONFIG_ARCH_HIPRI_INTERRUPT */
+#endif  /* CONFIG_STM32_STM32F33XX */
 
 #undef EXTERN
 #if defined(__cplusplus)

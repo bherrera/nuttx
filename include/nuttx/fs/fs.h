@@ -1,7 +1,8 @@
 /****************************************************************************
  * include/nuttx/fs/fs.h
  *
- *   Copyright (C) 2007-2009, 2011-2013, 2015-2017 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2009, 2011-2013, 2015-2018 Gregory Nutt. All rights
+ *     reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -60,6 +61,40 @@
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
+
+/* Most internal OS interfaces are not available in the user space in
+ * PROTECTED and KERNEL builds.  In that context, the corresponding
+ * application interfaces must be used.  The differences between the two
+ * sets of interfaces are:  The internal OS interfaces (1) do not cause
+ * cancellation points and (2) they do not modify the errno variable.
+ *
+ * This is only important when compiling libraries (libc or libnx) that are
+ * used both by the OS (libkc.a and libknx.a) or by the applications
+ * (libuc.a and libunx.a).  The that case, the correct interface must be
+ * used for the build context.
+ *
+ * The interfaces open(), close(), creat(), read(), pread(), write(),
+ * pwrite(), poll(), select(), fcntl(), and aio_suspend() are all
+ * cancellation points.
+ *
+ * REVISIT:  These cancellation points are an issue and may cause
+ * violations:  It use of these internally will cause the calling function
+ * to become a cancellation points!
+ */
+
+#if defined(CONFIG_BUILD_FLAT) || defined(__KERNEL__)
+#  define _NX_READ(f,b,s)      nx_read(f,b,s)
+#  define _NX_WRITE(f,b,s)     nx_write(f,b,s)
+#  define _NX_GETERRNO(r)      (-(r))
+#  define _NX_SETERRNO(r)      set_errno(-(r))
+#  define _NX_GETERRVAL(r)     (r)
+#else
+#  define _NX_READ(f,b,s)      read(f,b,s)
+#  define _NX_WRITE(f,b,s)     write(f,b,s)
+#  define _NX_GETERRNO(r)      errno
+#  define _NX_SETERRNO(r)
+#  define _NX_GETERRVAL(r)     (-errno)
+#endif
 
 /* Stream flags for the fs_flags field of in struct file_struct */
 
@@ -245,7 +280,7 @@ struct mountpt_operations
             int oflags, mode_t mode);
 
   /* The following methods must be identical in signature and position
-   * because the struct file_operations and struct mountp_operations are
+   * because the struct file_operations and struct mountpt_operations are
    * treated like unions.
    */
 
@@ -266,6 +301,7 @@ struct mountpt_operations
   int     (*sync)(FAR struct file *filep);
   int     (*dup)(FAR const struct file *oldp, FAR struct file *newp);
   int     (*fstat)(FAR const struct file *filep, FAR struct stat *buf);
+  int     (*truncate)(FAR struct file *filep, off_t length);
 
   /* Directory operations */
 
@@ -335,7 +371,7 @@ union inode_ops_u
 #endif
 };
 
-/* This structure represents one inode in the Nuttx pseudo-file system */
+/* This structure represents one inode in the NuttX pseudo-file system */
 
 struct inode
 {
@@ -381,10 +417,10 @@ struct filelist
  *
  * When buffering us used, the following described the usage of the I/O buffer.
  * The buffer can be used for reading or writing -- but not both at the same time.
- * An fflush is implied between each change in directionof access.
+ * An fflush is implied between each change in direction of access.
  *
  * The field fs_bufread determines whether the buffer is being used for reading or
- * for writing as fillows:
+ * for writing as follows:
  *
  *              BUFFER
  *     +----------------------+ <- fs_bufstart Points to the beginning of the buffer.
@@ -396,7 +432,7 @@ struct filelist
  *     |                      |                RD: Points to next char to return
  *     +----------------------+
  *     | WR: Available        | <- fs_bufread  Top+1 of buffered read data
- *     | RD: Available        |                WR: =bufstart buffer used for writing.
+ *     | RD: Available        |                WR: bufstart buffer used for writing.
  *     |                      |                RD: Pointer to last buffered read char+1
  *     +----------------------+
  *                              <- fs_bufend   Points to end end of the buffer+1
@@ -430,17 +466,6 @@ struct streamlist
 };
 #endif /* CONFIG_NFILE_STREAMS */
 
-/* Callback used by foreach_mountpoints to traverse all mountpoints in the
- * pseudo-file system.
- */
-
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-struct statfs;                    /* Forward reference */
-typedef int (*foreach_mountpoint_t)(FAR const char *mountpoint,
-                                    FAR struct statfs *statbuf,
-                                    FAR void *arg);
-#endif
-
 /****************************************************************************
  * Public Function Prototypes
  ****************************************************************************/
@@ -466,39 +491,15 @@ extern "C"
 void fs_initialize(void);
 
 /****************************************************************************
- * Name: foreach_mountpoint
- *
- * Description:
- *   Visit each mountpoint in the pseudo-file system.  The traversal is
- *   terminated when the callback 'handler' returns a non-zero value, or when
- *   all of the mountpoints have been visited.
- *
- *   This is just a front end "filter" to foreach_inode() that forwards only
- *   mountpoint inodes.  It is intended to support the mount() command to
- *   when the mount command is used to enumerate mounts.
- *
- *   NOTE 1: Use with caution... The pseudo-file system is locked throughout
- *   the traversal.
- *   NOTE 2: The search algorithm is recursive and could, in principle, use
- *   an indeterminant amount of stack space.  This will not usually be a
- *   real work issue.
- *
- ****************************************************************************/
-
-#ifndef CONFIG_DISABLE_MOUNTPOINT
-int foreach_mountpoint(foreach_mountpoint_t handler, FAR void *arg);
-#endif
-
-/****************************************************************************
  * Name: register_driver
  *
  * Description:
  *   Register a character driver inode the pseudo file system.
  *
- * Input parameters:
+ * Input Parameters:
  *   path - The path to the inode to create
  *   fops - The file operations structure
- *   mode - inmode priviledges (not used)
+ *   mode - inmode privileges (not used)
  *   priv - Private, user data that will be associated with the inode.
  *
  * Returned Value:
@@ -522,10 +523,10 @@ int register_driver(FAR const char *path,
  * Description:
  *   Register a block driver inode the pseudo file system.
  *
- * Input parameters:
+ * Input Parameters:
  *   path - The path to the inode to create
  *   bops - The block driver operations structure
- *   mode - inmode priviledges (not used)
+ *   mode - inmode privileges (not used)
  *   priv - Private, user data that will be associated with the inode.
  *
  * Returned Value:
@@ -606,6 +607,14 @@ void files_releaselist(FAR struct filelist *list);
  *   Assign an inode to a specific files structure.  This is the heart of
  *   dup2.
  *
+ *   Equivalent to the non-standard fs_dupfd2() function except that it
+ *   accepts struct file instances instead of file descriptors and it does
+ *   not set the errno variable.
+ *
+ * Returned Value:
+ *   Zero (OK) is returned on success; a negated errno value is return on
+ *   any failure.
+ *
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
@@ -616,7 +625,7 @@ int file_dup2(FAR struct file *filep1, FAR struct file *filep2);
  * Name: fs_dupfd OR dup
  *
  * Description:
- *   Clone a file descriptor 'fd' to an arbitray descriptor number (any value
+ *   Clone a file descriptor 'fd' to an arbitrary descriptor number (any value
  *   greater than or equal to 'minfd'). If socket descriptors are
  *   implemented, then this is called by dup() for the case of file
  *   descriptors.  If socket descriptors are not implemented, then this
@@ -624,6 +633,11 @@ int file_dup2(FAR struct file *filep1, FAR struct file *filep2);
  *
  *   This alternative naming is used when dup could operate on both file and
  *   socket descriptors to avoid drawing unused socket support into the link.
+ *
+ * Returned Value:
+ *   fs_dupfd is sometimes an OS internal function and sometimes is a direct
+ *   substitute for dup().  So it must return an errno value as though it
+ *   were dup().
  *
  ****************************************************************************/
 
@@ -636,8 +650,12 @@ int fs_dupfd(int fd, int minfd);
  *
  * Description:
  *   Equivalent to the non-standard fs_dupfd() function except that it
- *   accepts a struct file instance instead of a file descriptor.  Currently
- *   used only by file_vfcntl();
+ *   accepts a struct file instance instead of a file descriptor and does
+ *   not set the errno variable.
+ *
+ * Returned Value:
+ *   Zero (OK) is returned on success; a negated errno value is returned on
+ *   any failure.
  *
  ****************************************************************************/
 
@@ -653,7 +671,12 @@ int file_dup(FAR struct file *filep, int minfd);
  *   then this function IS dup2().
  *
  *   This alternative naming is used when dup2 could operate on both file and
- *   socket descritors to avoid drawing unused socket support into the link.
+ *   socket descriptors to avoid drawing unused socket support into the link.
+ *
+ * Returned Value:
+ *   fs_dupfd2 is sometimes an OS internal function and sometimes is a direct
+ *   substitute for dup2().  So it must return an errno value as though it
+ *   were dup2().
  *
  ****************************************************************************/
 
@@ -717,13 +740,13 @@ int file_close_detached(FAR struct file *filep);
  * Description:
  *   Return the inode of the block driver specified by 'pathname'
  *
- * Inputs:
+ * Input Parameters:
  *   pathname - the full path to the block driver to be opened
  *   mountflags - if MS_RDONLY is not set, then driver must support write
  *     operations (see include/sys/mount.h)
  *   ppinode - address of the location to return the inode reference
  *
- * Return:
+ * Returned Value:
  *   Returns zero on success or a negated errno on failure:
  *
  *   EINVAL  - pathname or pinode is NULL
@@ -745,10 +768,10 @@ int open_blockdriver(FAR const char *pathname, int mountflags,
  * Description:
  *   Call the close method and release the inode
  *
- * Inputs:
+ * Input Parameters:
  *   inode - reference to the inode of a block driver opened by open_blockdriver
  *
- * Return:
+ * Returned Value:
  *   Returns zero on success or a negated errno on failure:
  *
  *   EINVAL  - inode is NULL
@@ -766,12 +789,12 @@ int close_blockdriver(FAR struct inode *inode);
  * Description:
  *   Perform device specific operations.
  *
- * Parameters:
+ * Input Parameters:
  *   fd       File/socket descriptor of device
  *   req      The ioctl command
  *   arg      The argument of the ioctl cmd
  *
- * Return:
+ * Returned Value:
  *   >=0 on success (positive non-zero values are cmd-specific)
  *   -1 on failure with errno set properly:
  *
@@ -840,33 +863,69 @@ ssize_t lib_sendfile(int outfd, int infd, off_t *offset, size_t count);
  *   file.  NOTE that this function will currently fail if it is provided
  *   with a socket descriptor.
  *
- * Parameters:
- *   fd - The file descriptor
+ * Input Parameters:
+ *   fd    - The file descriptor
+ *   filep - The location to return the struct file instance
  *
- * Return:
- *   A point to the corresponding struct file instance is returned on
- *   success.  On failure,  NULL is returned and the errno value is
- *   set appropriately (EBADF).
+ * Returned Value:
+ *   Zero (OK) is returned on success; a negated errno value is returned on
+ *   any failure.
  *
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
-FAR struct file *fs_getfilep(int fd);
+int fs_getfilep(int fd, FAR struct file **filep);
 #endif
 
 /****************************************************************************
  * Name: file_read
  *
  * Description:
- *   Equivalent to the standard read() function except that is accepts a
- *   struct file instance instead of a file descriptor.  Currently used
- *   only by net_sendfile() and aio_read();
+ *   file_read() is an interanl OS interface.  It is functionally similar to
+ *   the standard read() interface except:
+ *
+ *    - It does not modify the errno variable,
+ *    - It is not a cancellation point,
+ *    - It does not handle socket descriptors, and
+ *    - It accepts a file structure instance instead of file descriptor.
+ *
+ * Input Parameters:
+ *   filep  - File structure instance
+ *   buf    - User-provided to save the data
+ *   nbytes - The maximum size of the user-provided buffer
+ *
+ * Returned Value:
+ *   The positive non-zero number of bytes read on success, 0 on if an
+ *   end-of-file condition, or a negated errno value on any failure.
  *
  ****************************************************************************/
 
 #if CONFIG_NFILE_DESCRIPTORS > 0
 ssize_t file_read(FAR struct file *filep, FAR void *buf, size_t nbytes);
 #endif
+
+/****************************************************************************
+ * Name: nx_read
+ *
+ * Description:
+ *   nx_read() is an interanl OS interface.  It is functionally similar to
+ *   the standard read() interface except:
+ *
+ *    - It does not modify the errno variable, and
+ *    - It is not a cancellation point.
+ *
+ * Input Parameters:
+ *   fd     - File descriptor to read from
+ *   buf    - User-provided to save the data
+ *   nbytes - The maximum size of the user-provided buffer
+ *
+ * Returned Value:
+ *   The positive non-zero number of bytes read on success, 0 on if an
+ *   end-of-file condition, or a negated errno value on any failure.
+ *
+ ****************************************************************************/
+
+ssize_t nx_read(int fd, FAR void *buf, size_t nbytes);
 
 /****************************************************************************
  * Name: file_write
@@ -881,6 +940,33 @@ ssize_t file_read(FAR struct file *filep, FAR void *buf, size_t nbytes);
 #if CONFIG_NFILE_DESCRIPTORS > 0
 ssize_t file_write(FAR struct file *filep, FAR const void *buf, size_t nbytes);
 #endif
+
+/****************************************************************************
+ * Name: nx_write
+ *
+ * Description:
+ *  nx_write() writes up to nytes bytes to the file referenced by the file
+ *  descriptor fd from the buffer starting at buf.  nx_write() is an
+ *  internal OS function.  It is functionally equivalent to write() except
+ *  that:
+ *
+ *  - It does not modify the errno variable, and
+ *  - It is not a cancellation point.
+ *
+ * Input Parameters:
+ *   fd     - file descriptor (or socket descriptor) to write to
+ *   buf    - Data to write
+ *   nbytes - Length of data to write
+ *
+ * Returned Value:
+ *  On success, the number of bytes written are returned (zero indicates
+ *  nothing was written).  On any failure, a negated errno value is returned
+ *  (see comments withwrite() for a description of the appropriate errno
+ *   values).
+ *
+ ****************************************************************************/
+
+ssize_t nx_write(int fd, FAR const void *buf, size_t nbytes);
 
 /****************************************************************************
  * Name: file_pread
@@ -931,13 +1017,27 @@ off_t file_seek(FAR struct file *filep, off_t offset, int whence);
  *
  * Description:
  *   Equivalent to the standard fsync() function except that is accepts a
- *   struct file instance instead of a file descriptor.  Currently used
- *   only by aio_fsync();
+ *   struct file instance instead of a file descriptor and it does not set
+ *   the errno variable.
  *
  ****************************************************************************/
 
-#if CONFIG_NFILE_DESCRIPTORS > 0
+#if CONFIG_NFILE_DESCRIPTORS > 0 && !defined(CONFIG_DISABLE_MOUNTPOINT)
 int file_fsync(FAR struct file *filep);
+#endif
+
+/****************************************************************************
+ * Name: file_truncate
+ *
+ * Description:
+ *   Equivalent to the standard ftruncate() function except that is accepts
+ *   a struct file instance instead of a file descriptor and it does not set
+ *   the errno variable.
+ *
+ ****************************************************************************/
+
+#if CONFIG_NFILE_DESCRIPTORS > 0 && !defined(CONFIG_DISABLE_MOUNTPOINT)
+int file_truncate(FAR struct file *filep, off_t length);
 #endif
 
 /****************************************************************************
@@ -951,8 +1051,10 @@ int file_fsync(FAR struct file *filep);
  *   req      The ioctl command
  *   arg      The argument of the ioctl cmd
  *
- * Return:
- *   See ioctl() below.
+ * Returned Value:
+ *   Returns a non-negative number on success;  A negated errno value is
+ *   returned on any failure (see comments ioctl() for a list of appropriate
+ *   errno values).
  *
  ****************************************************************************/
 
@@ -965,8 +1067,17 @@ int file_ioctl(FAR struct file *filep, int req, unsigned long arg);
  *
  * Description:
  *   Similar to the standard vfcntl function except that is accepts a struct
- *   struct file instance instead of a file descriptor.  Currently used
- *   only by aio_fcntl();
+ *   struct file instance instead of a file descriptor.
+ *
+ * Input Parameters:
+ *   filep - Instance for struct file for the opened file.
+ *   cmd   - Indentifies the operation to be performed.
+ *   ap    - Variable argument following the command.
+ *
+ * Returned Value:
+ *   The nature of the return value depends on the command.  Non-negative
+ *   values indicate success.  Failures are reported as negated errno
+ *   values.
  *
  ****************************************************************************/
 

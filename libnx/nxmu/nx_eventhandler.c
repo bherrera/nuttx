@@ -1,7 +1,7 @@
 /****************************************************************************
  * libnx/nxmu/nx_eventhandler.c
  *
- *   Copyright (C) 2008-2009, 2011-2013 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2008-2009, 2011-2013, 2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,6 +46,7 @@
 #include <errno.h>
 #include <debug.h>
 
+#include <nuttx/mqueue.h>
 #include <nuttx/nx/nx.h>
 #include <nuttx/nx/nxbe.h>
 #include <nuttx/nx/nxmu.h>
@@ -107,7 +108,7 @@ static inline void nx_disconnected(FAR struct nxfe_conn_s *conn)
  * Input Parameters:
  *   handle - the handle returned by nx_connect
  *
- * Return:
+ * Returned Value:
  *     OK: No errors occurred.  If CONFIG_NX_BLOCKING is defined, then
  *         one or more server message was processed.
  *  ERROR: An error occurred and errno has been set appropriately.  Of
@@ -120,25 +121,27 @@ static inline void nx_disconnected(FAR struct nxfe_conn_s *conn)
 int nx_eventhandler(NXHANDLE handle)
 {
   FAR struct nxfe_conn_s *conn = (FAR struct nxfe_conn_s *)handle;
-  struct nxsvrmsg_s      *msg;
-  struct nxbe_window_s   *wnd;
-  char                    buffer[NX_MXCLIMSGLEN];
-  int                     nbytes;
+  struct nxsvrmsg_s *msg;
+  struct nxbe_window_s *wnd;
+  char buffer[NX_MXCLIMSGLEN];
+  int nbytes;
 
   /* Get the next message from our incoming message queue */
 
   do
     {
-      nbytes = mq_receive(conn->crdmq, buffer, NX_MXCLIMSGLEN, 0);
+      nbytes = _MQ_RECEIVE(conn->crdmq, buffer, NX_MXCLIMSGLEN, 0);
       if (nbytes < 0)
         {
+          int errcode = _MQ_GETERRNO(nbytes);
+
           /* EINTR is not an error.  The wait was interrupted by a signal and
            * we just need to try reading again.
            */
 
-          if (errno != EINTR)
+          if (errcode != EINTR)
             {
-              if (errno == EAGAIN)
+              if (errcode == EAGAIN)
                 {
                   /* EAGAIN is not an error.  It occurs because the MQ is opened with
                    * O_NONBLOCK and there is no message available now.
@@ -148,7 +151,8 @@ int nx_eventhandler(NXHANDLE handle)
                 }
               else
                 {
-                  gerr("ERROR: mq_receive failed: %d\n", errno);
+                  gerr("ERROR: _MQ_RECEIVE failed: %d\n", errcode);
+                  _MQ_SETERRNO(nbytes);
                   return ERROR;
                 }
             }

@@ -73,6 +73,10 @@
 #  include <nuttx/leds/userled.h>
 #endif
 
+#ifdef CONFIG_VIDEO_FB
+#  include <nuttx/video/fb.h>
+#endif
+
 #include "stm32f103_minimum.h"
 
 /* Conditional logic in stm32f103_minimum.h will determine if certain features
@@ -153,11 +157,30 @@ int stm32_bringup(void)
     }
 #endif
 
+#ifdef CONFIG_VIDEO_FB
+  /* Initialize and register the framebuffer driver */
+
+  ret = fb_register(0, 0);
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: fb_register() failed: %d\n", ret);
+    }
+#endif
+
 #ifdef CONFIG_MMCSD
   ret = stm32_mmcsd_initialize(MMCSD_MINOR);
   if (ret < 0)
     {
       syslog(LOG_ERR, "Failed to initialize SD slot %d: %d\n", ret);
+      return ret;
+    }
+#endif
+
+#ifdef CONFIG_SENSORS_BMP180
+  ret = stm32_bmp180initialize("/dev/press0");
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "Failed to initialize BMP180, error %d\n", ret);
       return ret;
     }
 #endif
@@ -173,6 +196,17 @@ int stm32_bringup(void)
       return ret;
     }
 #endif
+
+#ifdef HAVE_AT24
+  /* Initialize the AT24 driver */
+
+  ret = stm32_at24_automount(AT24_MINOR);
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: stm32_at24_automount failed: %d\n", ret);
+      return ret;
+    }
+#endif /* HAVE_AT24 */
 
 #ifdef CONFIG_PWM
   /* Initialize PWM and register the PWM device. */
@@ -201,6 +235,16 @@ int stm32_bringup(void)
   if (ret < 0)
     {
       syslog(LOG_ERR, "ERROR: stm32_apa102init() failed: %d\n", ret);
+    }
+#endif
+
+#ifdef CONFIG_LM75_I2C
+  /* Configure and initialize the LM75 sensor */
+
+  ret = stm32_lm75initialize("/dev/temp");
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: stm32_lm75initialize() failed: %d\n", ret);
     }
 #endif
 
@@ -260,6 +304,16 @@ int stm32_bringup(void)
     }
 #endif
 
+#ifdef CONFIG_INPUT_NUNCHUCK
+  /* Register the Nunchuck driver */
+
+  ret = nunchuck_initialize("/dev/nunchuck0");
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: nunchuck_initialize() failed: %d\n", ret);
+    }
+#endif
+
 #ifdef CONFIG_SENSORS_QENCODER
   /* Initialize and register the qencoder driver */
 
@@ -282,6 +336,16 @@ int stm32_bringup(void)
     }
 #endif
 
+#ifdef CONFIG_SENSORS_APDS9960
+  /* Register the APDS-9960 gesture sensor */
+
+  ret = stm32_apds9960initialize("/dev/gest0");
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: stm32_apds9960initialize() failed: %d\n", ret);
+    }
+#endif
+
 #ifdef CONFIG_SENSORS_VEML6070
   /* Register the UV-A light sensor */
 
@@ -289,6 +353,16 @@ int stm32_bringup(void)
   if (ret < 0)
     {
       syslog(LOG_ERR, "ERROR: stm32_veml6070initialize() failed: %d\n", ret);
+    }
+#endif
+
+#ifdef CONFIG_ADC
+  /* Initialize ADC and register the ADC driver. */
+
+  ret = stm32_adc_setup();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: stm32_adc_setup failed: %d\n", ret);
     }
 #endif
 

@@ -646,10 +646,21 @@ static inline void tiva_i2c_putreg(struct tiva_i2c_priv_s *priv,
 
 static inline void tiva_i2c_sem_wait(struct tiva_i2c_priv_s *priv)
 {
-  while (sem_wait(&priv->exclsem) != 0)
+  int ret;
+
+  do
     {
-      ASSERT(errno == EINTR);
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&priv->exclsem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
+       */
+
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /************************************************************************************
@@ -707,7 +718,7 @@ static inline int tiva_i2c_sem_waitdone(struct tiva_i2c_priv_s *priv)
 
   /* Signal the interrupt handler that we are waiting.  NOTE:  Interrupts
    * are currently disabled but will be temporarily re-enabled below when
-   * sem_timedwait() sleeps.
+   * nxsem_timedwait() sleeps.
    */
 
   do
@@ -743,11 +754,11 @@ static inline int tiva_i2c_sem_waitdone(struct tiva_i2c_priv_s *priv)
 
       /* Wait until either the transfer is complete or the timeout expires */
 
-      ret = sem_timedwait(&priv->waitsem, &abstime);
-      if (ret != OK && errno != EINTR)
+      ret = nxsem_timedwait(&priv->waitsem, &abstime);
+      if (ret < 0 && ret != -EINTR)
         {
           /* Break out of the loop on irrecoverable errors.  This would
-           * include timeouts and mystery errors reported by sem_timedwait.
+           * include timeouts and mystery errors reported by nxsem_timedwait.
            * NOTE that we try again if we are awakened by a signal (EINTR).
            */
 
@@ -791,7 +802,7 @@ static inline int tiva_i2c_sem_waitdone(struct tiva_i2c_priv_s *priv)
 
   /* Signal the interrupt handler that we are waiting.  NOTE:  Interrupts
    * are currently disabled but will be temporarily re-enabled below when
-   * sem_timedwait() sleeps.
+   * nxsem_timedwait() sleeps.
    */
 
   start = clock_systimer();
@@ -838,7 +849,7 @@ static inline int tiva_i2c_sem_waitdone(struct tiva_i2c_priv_s *priv)
 
 static inline void tiva_i2c_sem_post(struct tiva_i2c_priv_s *priv)
 {
-  sem_post(&priv->exclsem);
+  nxsem_post(&priv->exclsem);
 }
 
 /************************************************************************************
@@ -851,15 +862,15 @@ static inline void tiva_i2c_sem_post(struct tiva_i2c_priv_s *priv)
 
 static inline void tiva_i2c_sem_init(struct tiva_i2c_priv_s *priv)
 {
-  sem_init(&priv->exclsem, 0, 1);
+  nxsem_init(&priv->exclsem, 0, 1);
 
 #ifndef CONFIG_I2C_POLLED
   /* This semaphore is used for signaling and, hence, should not have
    * priority inheritance enabled.
    */
 
-  sem_init(&priv->waitsem, 0, 0);
-  sem_setprotocol(&priv->waitsem, SEM_PRIO_NONE);
+  nxsem_init(&priv->waitsem, 0, 0);
+  nxsem_setprotocol(&priv->waitsem, SEM_PRIO_NONE);
 #endif
 }
 
@@ -873,9 +884,9 @@ static inline void tiva_i2c_sem_init(struct tiva_i2c_priv_s *priv)
 
 static inline void tiva_i2c_sem_destroy(struct tiva_i2c_priv_s *priv)
 {
-  sem_destroy(&priv->exclsem);
+  nxsem_destroy(&priv->exclsem);
 #ifndef CONFIG_I2C_POLLED
-  sem_destroy(&priv->waitsem);
+  nxsem_destroy(&priv->waitsem);
 #endif
 }
 
@@ -1219,7 +1230,7 @@ static int tiva_i2c_process(struct tiva_i2c_priv_s *priv, uint32_t status)
                * and wake it up.
                */
 
-              sem_post(&priv->waitsem);
+              nxsem_post(&priv->waitsem);
               priv->mstatus   = mcs;
               priv->intstate = INTSTATE_DONE;
             }
@@ -1341,7 +1352,7 @@ static int tiva_i2c_process(struct tiva_i2c_priv_s *priv, uint32_t status)
                            * complete and wake it up.
                            */
 
-                          sem_post(&priv->waitsem);
+                          nxsem_post(&priv->waitsem);
                           priv->mstatus   = 0;
                           priv->intstate = INTSTATE_DONE;
                         }

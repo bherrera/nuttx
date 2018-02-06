@@ -309,10 +309,17 @@ config CDCACM_CONSOLE
 config CDCACM_IFLOWCONTROL
 	bool "CDC/ACM RTS flow control"
 	default n
-	depends on EXPERIMENTAL
 	select SERIAL_IFLOWCONTROL
 	---help---
 		Enable CDC/ACM RTS flow control
+
+config CDCACM_OFLOWCONTROL
+	bool "CDC/ACM CTS flow control"
+	default n
+	depends on EXPERIMENTAL
+	select SERIAL_OFLOWCONTROL
+	---help---
+		Enable CDC/ACM CTS flow control
 
 menuconfig CDCACM_COMPOSITE
 	bool "CDC/ACM composite support"
@@ -652,3 +659,18 @@ config USBMSC_SCSI_STACKSIZE
 		is not tuned.
 
 endif
+
+menuconfig RNDIS
+	bool "RNDIS Ethernet-over-USB"
+	default n
+	---help---
+		References:
+		- "MS-RNDIS: Remote Network Driver Interface Specification (RNDIS)
+		   Protocol"
+		- "Remote NDIS To USB Mapping"
+
+		This option may requierd CONFIG_NETDEV_LATEINIT=y otherwise, the
+		power-up initialization may call the non-existent up_netinitialize().
+		This option is not automatically selected because it may be that
+		you have an additional network device that requires the early
+		up_netinitialize() call.

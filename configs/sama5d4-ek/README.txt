@@ -1356,7 +1356,7 @@ Networking
     CONFIG_NET_UDP=y                     : Enable UDP networking
     CONFIG_NET_BROADCAST=y               : Support UDP broadcase packets
     CONFIG_NET_ICMP=y                    : Enable ICMP networking
-    CONFIG_NET_ICMP_PING=y               : Needed for NSH ping command
+    CONFIG_NET_ICMP_SOCKET=y             : Needed for NSH ping command
                                          : Defaults should be okay for other options
   Device drivers -> Network Device/PHY Support
     CONFIG_NETDEVICES=y                  : Enabled PHY selection
@@ -1675,7 +1675,7 @@ HSMCI Card Slots
       CONFIG_MMCSD=y                        : Enable MMC/SD support
       CONFIG_MMSCD_NSLOTS=1                 : One slot per driver instance
       CONFIG_MMCSD_MULTIBLOCK_DISABLE=y     : (REVISIT)
-      CONFIG_MMCSD_HAVECARDDETECT=y         : Supports card-detect PIOs
+      CONFIG_MMCSD_HAVE_CARDDETECT=y         : Supports card-detect PIOs
       CONFIG_MMCSD_MMCSUPPORT=n             : Interferes with some SD cards
       CONFIG_MMCSD_SPI=n                    : No SPI-based MMC/SD support
       CONFIG_MMCSD_SDIO=y                   : SDIO-based MMC/SD support
@@ -3268,7 +3268,6 @@ TM7000 LCD/Touchscreen
   build in a touchscreen test:
 
     CONFIG_EXAMPLES_TOUCHSCREEN=y
-    CONFIG_EXAMPLES_TOUCHSCREEN_ARCHINIT=y
     CONFIG_EXAMPLES_TOUCHSCREEN_DEVPATH="/dev/input0"
     CONFIG_EXAMPLES_TOUCHSCREEN_MINOR=0
 
@@ -3959,7 +3958,7 @@ Configurations
          CONFIG_NET_ARP=y
          CONFIG_NET_ARP_SEND=y (optional)
          CONFIG_NET_ICMP=y
-         CONFIG_NET_ICMP_PING=y
+         CONFIG_NET_ICMP_SOCKET=y
 
          CONFIG_NETDB_DNSCLIENT=y
          CONFIG_NETUTILS_TELNETD=y
@@ -4114,9 +4113,6 @@ Configurations
 
        Then you will need to follow some special build instructions below
        in order to build and install the ROMFS file system image.
-
-       UPDATE: The ROMFS configuration is pre-configured in the
-       file nuttx/configs/sama5d4-ek/knsh/defconfig.ROMFS
 
     5. Board initialization is performed performed before the application
        is started:

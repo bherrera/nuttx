@@ -90,7 +90,7 @@ static void arp_send_terminate(FAR struct arp_send_s *state, int result)
 
    /* Wake up the waiting thread */
 
-   sem_post(&state->snd_sem);
+   nxsem_post(&state->snd_sem);
 }
 
 /****************************************************************************
@@ -250,7 +250,6 @@ int arp_send(in_addr_t ipaddr)
       /* Destination address is not on the local network */
 
 #ifdef CONFIG_NET_ROUTE
-
       /* We have a routing table.. find the correct router to use in
        * this case (or, as a fall-back, use the device's default router
        * address).  We will use the router IP address instead of the
@@ -266,6 +265,17 @@ int arp_send(in_addr_t ipaddr)
       net_ipv4addr_copy(dripaddr, dev->d_draddr);
 #endif
       ipaddr = dripaddr;
+    }
+
+  /* The destination address is on the local network.  Check if it is
+   * the sub-net broadcast address.
+   */
+
+  else if (net_ipv4addr_broadcast(ipaddr, dev->d_netmask))
+    {
+      /* Yes.. We don't need to send the ARP request */
+
+      return OK;
     }
 
   /* Allocate resources to receive a callback.  This and the following
@@ -290,8 +300,8 @@ int arp_send(in_addr_t ipaddr)
    * priority inheritance enabled.
    */
 
-  (void)sem_init(&state.snd_sem, 0, 0); /* Doesn't really fail */
-  sem_setprotocol(&state.snd_sem, SEM_PRIO_NONE);
+  (void)nxsem_init(&state.snd_sem, 0, 0); /* Doesn't really fail */
+  nxsem_setprotocol(&state.snd_sem, SEM_PRIO_NONE);
 
   state.snd_retries   = 0;              /* No retries yet */
   state.snd_ipaddr    = ipaddr;         /* IP address to query */
@@ -395,7 +405,7 @@ int arp_send(in_addr_t ipaddr)
       nerr("ERROR: arp_wait failed: %d\n", ret);
     }
 
-  sem_destroy(&state.snd_sem);
+  nxsem_destroy(&state.snd_sem);
   arp_callback_free(dev, state.snd_cb);
 errout_with_lock:
   net_unlock();

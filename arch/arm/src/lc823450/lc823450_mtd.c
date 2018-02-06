@@ -142,10 +142,21 @@ static struct lc823450_partinfo_s partinfo[LC823450_NPARTS] =
 
 static void mtd_semtake(FAR sem_t *sem)
 {
-  while (sem_wait(sem) != 0)
+  int ret;
+
+  do
     {
-      ASSERT(errno == EINTR);
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(sem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
+       */
+
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -154,7 +165,7 @@ static void mtd_semtake(FAR sem_t *sem)
 
 static void mtd_semgive(FAR sem_t *sem)
 {
-  sem_post(sem);
+  nxsem_post(sem);
 }
 
 /****************************************************************************
@@ -516,7 +527,7 @@ static FAR struct mtd_dev_s *lc823450_mtd_allocdev(uint32_t channel)
       return NULL;
     }
 
-  sem_init(&priv->sem, 0, 1);
+  nxsem_init(&priv->sem, 0, 1);
 
   priv->mtd.erase  = lc823450_erase;
   priv->mtd.bread  = lc823450_bread;
@@ -535,7 +546,7 @@ static FAR struct mtd_dev_s *lc823450_mtd_allocdev(uint32_t channel)
   if (ret != OK)
     {
       finfo("ERROR: Failed to initialize media\n");
-      sem_destroy(&priv->sem);
+      nxsem_destroy(&priv->sem);
       kmm_free(priv);
       return NULL;
     }
@@ -799,7 +810,7 @@ int lc823450_mtd_uninitialize(uint32_t devno)
   ret = lc823450_sdc_finalize(ch);
   DEBUGASSERT(ret == OK);
 
-  sem_destroy(&priv->sem);
+  nxsem_destroy(&priv->sem);
 
   kmm_free(g_mtdmaster[ch]);
 

@@ -33,6 +33,7 @@ Contents
   - PWM
   - UARTs
   - Timer Inputs/Outputs
+  - Nintendo Wii Nunchuck
   - Quadrature Encoder
   - FPU
   - STM32F4DIS-BB
@@ -217,6 +218,39 @@ TIM14
    with care (See table 5 in the STM32F4Discovery User Guide).  The rest are
    free I/O pins.
 ** Port H pins are not supported by the MCU
+
+Nintendo Wii Nunchuck:
+======================
+
+  There is a driver on NuttX to support Nintendo Wii Nunchuck Joystick. If you
+  want to use it please select these options:
+
+  - Enable the I2C1 at System Type -> STM32 Peripheral Support, it will enable:
+
+    CONFIG_STM32_I2C1=y
+
+  - Enable to Custom board/driver initialization at RTOS Features -> RTOS hooks
+
+    CONFIG_BOARD_INITIALIZE=y
+
+  - Enable the I2C Driver Support at Device Drivers, it will enable this symbol:
+
+    CONFIG_I2C=y
+
+  - Nintendo Wii Nunchuck Joystick at Device Drivers -> [*] Input Device Support
+
+    CONFIG_INPUT=y
+      CONFIG_INPUT_NUNCHUCK=y
+
+  - Enable the Nunchuck joystick example at Application Configuration -> Examples
+
+  CONFIG_EXAMPLES_NUNCHUCK=y
+    CONFIG_EXAMPLES_NUNCHUCK_DEVNAME="/dev/nunchuck0"
+
+  You need to connect GND and +3.3V pins from Nunchuck connector to GND and 3V
+  of stm32f4discovery respectively (Nunchuck also can work connected to 5V, but
+  I don't recommend it). Connect I2C Clock from Nunchuck to SCK (PB6) and the
+  I2C Data to SDA (PB9).
 
 Quadrature Encoder:
 ===================
@@ -1153,7 +1187,7 @@ Where <subdir> is one of the following:
          CONFIG_NET_ARP=y
          CONFIG_NET_ARP_SEND=y (optional)
          CONFIG_NET_ICMP=y
-         CONFIG_NET_ICMP_PING=y
+         CONFIG_NET_ICMP_SOCKET=y
 
          CONFIG_NETDB_DNSCLIENT=y
          CONFIG_NETUTILS_TELNETD=y
@@ -1349,7 +1383,7 @@ Where <subdir> is one of the following:
   nsh:
   ---
     Configures the NuttShell (nsh) located at apps/examples/nsh.  The
-    Configuration enables the serial interfaces on UART2.  Support for
+    Configuration enables the serial interfaces on USART2.  Support for
     builtin applications is enabled, but in the base configuration no
     builtin applications are selected (see NOTES below).
 
@@ -1377,7 +1411,7 @@ Where <subdir> is one of the following:
 
        - Select the STM32F4DIS-BB baseboard in the board configuration
          menu
-       - Disable UART2 and select USART6 in the STM32 peripheral selection
+       - Disable USART2 and select USART6 in the STM32 peripheral selection
          menu
        - Select USART6 as the serial console at 115200 8N1 in the
          Drivers menus
@@ -1599,6 +1633,74 @@ Where <subdir> is one of the following:
        2015-04-30
           Appears to be fully functional.
 
+   12. Using USB Device as a Mass Storage for the host computer:
+
+       System Type  --->
+           STM32 Peripheral Support  --->
+               [*] OTG FS
+
+       Device Drivers  --->
+           [*] USB Device Driver Support  --->
+               [*]   USB Mass storage class device  --->
+                   [*]   Mass storage removable
+
+           [*] RAM Disk Support
+
+       Board Selection  --->
+           [*] Enable boardctl() interface
+           [*]   Enable USB device controls
+
+       File Systems  --->
+           [*] FAT file system
+           [*]   FAT upper/lower names
+           [*]   FAT long file names
+
+           [*] PROCFS File System
+
+       Application Configuration  --->
+           System Libraries and NSH Add-Ons  --->
+               [*] USB Mass Storage Device Commands  --->
+                   (/dev/ram0) LUN1 Device Path
+
+       Compile and flash the firmware in the board as usual, then in the nsh:
+
+       nsh> mkrd -m 0 -s 512 64
+
+       nsh> ls /dev
+       /dev:
+        console
+        null
+        ram0
+        ttyS0
+
+       nsh> mkfatfs /dev/ram0
+
+       Connect a USB cable to STM32F4Discovery board (connector CN5) and run:
+
+       nsh> msconn
+       mcsonn_main: Creating block drivers
+       mcsonn_main: Configuring with NLUNS=1
+       mcsonn_main: handle=1000a550
+       mcsonn_main: Bind LUN=0 to /dev/ram0
+       mcsonn_main: Connected
+
+       In this moment a 33KB disk should appear in your host computer. If you
+       saved some file on this small disk you can now run disconnect command:
+
+       nsh> msdis
+       msdis: Disconnected
+
+       Remove the USB cable from microUSB connector and run:
+
+       nsh> mount -t vfat /dev/ram0 /mnt
+
+       nsh> ls /mnt
+       /mnt:
+        TEST.TXT
+
+       nsh> cat /mnt/TEST.TXT
+       Testing
+
   nxlines:
   ------
     An example using the NuttX graphics system (NX).   This example focuses on
@@ -1649,6 +1751,7 @@ Where <subdir> is one of the following:
 
      -CONFIG_NX_DISABLE_1BPP=y
      +CONFIG_NX_DISABLE_16BPP=y
+     +CONFIG_NXSTART_EXTERNINIT=y
 
      -CONFIG_EXAMPLES_NXLINES_BGCOLOR=0x0320
      -CONFIG_EXAMPLES_NXLINES_LINEWIDTH=16
@@ -1767,10 +1870,10 @@ Where <subdir> is one of the following:
     This is a configuration to test the Pseudo Terminal support for NuttX.
 
     To test it you will need two USB/Serial dongles. The first dongle as
-    usual will be used to main NSH console port in UART2 (PA2 and PA3) and
+    usual will be used to main NSH console port in USART2 (PA2 and PA3) and
     the second dongle you will connect to UART3 (PB10 and PB11).
 
-    In the main NSH console (in UART2) type: "pts_test &". It will create a
+    In the main NSH console (in USART2) type: "pts_test &". It will create a
     new console in UART3. Just press ENTER and start typing commands on it.
 
   testlibcxx
@@ -1822,14 +1925,14 @@ Where <subdir> is one of the following:
        CONFIG_WINDOWS_CYGWIN=y                 : Using Cygwin
        CONFIG_ARMV7M_TOOLCHAIN_CODESOURCERYW=y : CodeSourcery for Windows
 
-    3. This configuration does have UART2 output enabled and set up as
+    3. This configuration does have USART2 output enabled and set up as
        the system logging device:
 
        CONFIG_SYSLOG_CHAR=y               : Use a character device for system logging
-       CONFIG_SYSLOG_DEVPATH="/dev/ttyS0" : UART2 will be /dev/ttyS0
+       CONFIG_SYSLOG_DEVPATH="/dev/ttyS0" : USART2 will be /dev/ttyS0
 
        However, there is nothing to generate SYLOG output in the default
-       configuration so nothing should appear on UART2 unless you enable
+       configuration so nothing should appear on USART2 unless you enable
        some debug output or enable the USB monitor.
 
        NOTE:  Using the SYSLOG to get debug output has limitations.  Among
@@ -1841,7 +1944,7 @@ Where <subdir> is one of the following:
     4. Enabling USB monitor SYSLOG output.  If tracing is enabled, the USB
        device will save encoded trace output in in-memory buffer; if the
        USB monitor is enabled, that trace buffer will be periodically
-       emptied and dumped to the system logging device (UART2 in this
+       emptied and dumped to the system logging device (USART2 in this
        configuration):
 
        CONFIG_USBDEV_TRACE=y                   : Enable USB trace feature

@@ -186,7 +186,7 @@ config JULIAN_TIME
 
 config START_YEAR
 	int "Start year"
-	default 2017
+	default 2018
 	range 1970 2106
 	---help---
 		NuttX uses an unsigned 32-bit integer for time_t which provides a
@@ -248,6 +248,14 @@ config SPINLOCK
 	---help---
 		Enables suppport for spinlocks.  Spinlocks are current used only for
 		SMP suppport.
+
+config SPINLOCK_IRQ
+	bool "Support Spinlocks with IRQ control"
+	default n
+	depends on ARCH_GLOBAL_IRQDISABLE
+	---help---
+		Enables suppport for spinlocks with IRQ control. This feature can be
+		used to protect data in SMP mode.
 
 config SMP
 	bool "Symmetric Multi-Processing (SMP)"
@@ -522,7 +530,15 @@ config SCHED_WAITPID
 endmenu # Tasks and Scheduling
 
 menu "Pthread Options"
-	depends on !DISABLE_PTHREAD
+
+config NPTHREAD_KEYS
+	int "Maximum number of pthread keys"
+	default 4 if !DISABLE_PTHREAD
+	default 0 if DISABLE_PTHREAD
+	---help---
+		The number of items of thread-specific data that can be retained
+
+if !DISABLE_PTHREAD
 
 config PTHREAD_MUTEX_TYPES
 	bool "Enable mutex types"
@@ -573,13 +589,6 @@ config PTHREAD_MUTEX_DEFAULT_UNSAFE
 
 endchoice # Default NORMAL mutex robustness
 
-config NPTHREAD_KEYS
-	int "Maximum number of pthread keys"
-	default 4
-	---help---
-		The number of items of thread-
-		specific data that can be retained
-
 config PTHREAD_CLEANUP
 	bool "pthread cleanup stack"
 	default n
@@ -609,9 +618,20 @@ config CANCELLATION_POINTS
 		cancellation points will also used with the () task_delete() API even if
 		pthreads are not enabled.
 
+endif # !DISABLE_PTHREAD
+
 endmenu # Pthread Options
 
 menu "Performance Monitoring"
+
+config SCHED_IRQMONITOR
+	bool "Enable IRQ monitoring"
+	default n
+	depends on FS_PROCFS
+	---help---
+		Enabling counting of interrupts from all interrupt sources.  These
+		counts will be available in the mounted procfs file systems at the
+		top-level file, "irqs".
 
 config SCHED_CPULOAD
 	bool "Enable CPU load monitoring"
@@ -928,6 +948,9 @@ menuconfig PRIORITY_INHERITANCE
 		disabled for individual semaphores by calling:
 
 			int ret = sem_setprotocol(&sem, SEM_PRIO_NONE);
+
+		From applications, the functionally equivalent OS internal interface,
+		nxsem_setrotocol() should be used within the OS
 
 		And for individual pthread mutexes by setting the protocol attribute
 		before initializing the mutex:

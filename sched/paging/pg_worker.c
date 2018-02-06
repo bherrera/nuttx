@@ -2,7 +2,7 @@
  * sched/paging/pg_worker.c
  * Page fill worker thread implementation.
  *
- *   Copyright (C) 2010-2011 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2010-2011, 2017-2018 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -48,9 +48,12 @@
 #include <errno.h>
 #include <debug.h>
 
+#include <nuttx/sched.h>
 #include <nuttx/arch.h>
+#include <nuttx/signal.h>
 #include <nuttx/page.h>
 #include <nuttx/clock.h>
+#include <nuttx/signal.h>
 
 #include "sched/sched.h"
 #include "paging/paging.h"
@@ -138,7 +141,7 @@ static systime_t g_starttime;
  *   task that is waiting for a fill.
  * - Signal the page fill worker thread.
  *
- * Input parameters:
+ * Input Parameters:
  *   tcb    - The TCB of the task that just received the fill.
  *   result - The result of the page fill operation.
  *
@@ -183,7 +186,7 @@ static void pg_callback(FAR struct tcb_s *tcb, int result)
         {
           pginfo("New worker priority. %d->%d\n",
                  wtcb->sched_priority, priority);
-          sched_setpriority(wtcb, priority);
+          (void)nxsched_setpriority(wtcb, priority);
         }
 
       /* Save the page fill result (don't permit the value -EBUSY) */
@@ -199,7 +202,7 @@ static void pg_callback(FAR struct tcb_s *tcb, int result)
   /* Signal the page fill worker thread (in any event) */
 
   pginfo("Signaling worker. PID: %d\n", g_pgworker);
-  kill(g_pgworker, SIGWORK);
+  (void)nxsig_kill(g_pgworker, SIGWORK);
 }
 #endif
 
@@ -220,7 +223,7 @@ static void pg_callback(FAR struct tcb_s *tcb, int result)
  *   The result (NULL or a TCB pointer) will be returned in the global
  *   variable, g_pftcb.
  *
- * Input parameters:
+ * Input Parameters:
  *   None
  *
  * Returned Value:
@@ -294,7 +297,7 @@ static inline bool pg_dequeue(void)
 
                   pginfo("New worker priority. %d->%d\n",
                          wtcb->sched_priority, priority);
-                  sched_setpriority(wtcb, priority);
+                  (void)nxsched_setpriority(wtcb, priority);
                 }
 
               /* Return with g_pftcb holding the pointer to
@@ -331,7 +334,7 @@ static inline bool pg_dequeue(void)
  *   prioritized list, or (2) when a page fill completes and there are more
  *   pages to be filled in g_waitingforfill list.
  *
- * Input parameters:
+ * Input Parameters:
  *   None
  *
  * Returned Value:
@@ -438,7 +441,7 @@ static inline bool pg_startfill(void)
  *   - Set g_pftcb to NULL.
  *   - Restore the default priority of the page fill worker thread.
  *
- * Input parameters:
+ * Input Parameters:
  *   None.
  *
  * Returned Value:
@@ -456,7 +459,7 @@ static inline void pg_alldone(void)
   g_pftcb = NULL;
   pginfo("New worker priority. %d->%d\n",
          wtcb->sched_priority, CONFIG_PAGING_DEFPRIO);
-  sched_setpriority(wtcb, CONFIG_PAGING_DEFPRIO);
+  (void)nxsched_setpriority(wtcb, CONFIG_PAGING_DEFPRIO);
 }
 
 /****************************************************************************
@@ -472,7 +475,7 @@ static inline void pg_alldone(void)
  *   This function is just a dumb wrapper around up_unblocktask().  This
  *   function simply makes the task that just received the fill ready-to-run.
  *
- * Input parameters:
+ * Input Parameters:
  *   None.
  *
  * Returned Value:
@@ -512,7 +515,7 @@ static inline void pg_fillcomplete(void)
  *     after completing a page fill.
  *   - A configurable timeout with no activity.
  *
- * Input parameters:
+ * Input Parameters:
  *   argc, argv (not used)
  *
  * Returned Value:
@@ -538,15 +541,14 @@ int pg_worker(int argc, char *argv[])
     {
       /* Wait awhile.  We will wait here until either the configurable timeout
        * elapses or until we are awakened by a signal (which terminates the
-       * usleep with an EINTR error).  Note that interrupts will be re-enabled
-       * while this task sleeps.
+       * nxsig_usleep with an EINTR error).  Note that interrupts will be re- * enabled while this task sleeps.
        *
        * The timeout is a failsafe that will handle any cases where a single
        * is lost (that would really be a bug and shouldn't happen!) and also
        * supports timeouts for case of non-blocking, asynchronous fills.
        */
 
-      usleep(CONFIG_PAGING_WORKPERIOD);
+      nxsig_usleep(CONFIG_PAGING_WORKPERIOD);
 
       /* The page fill worker thread will be awakened on one of three conditions:
        *

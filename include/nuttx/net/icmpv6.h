@@ -240,8 +240,8 @@ struct icmpv6_router_advertise_s
   uint8_t  hoplimit;         /* Current hop limit */
   uint8_t  flags;            /* See ICMPv6_RADV_FLAG_* definitions */
   uint16_t lifetime;         /* Router lifetime */
-  uint16_t reachable[2];     /* Reachable time */
-  uint16_t retrans[2];       /* Retransmission timer */
+  uint32_t reachable;        /* Reachable time */
+  uint32_t retrans;          /* Retransmission timer */
                              /* Options begin here */
 };
 
@@ -311,8 +311,8 @@ struct icmpv6_prefixinfo_s
   uint8_t  optlen;           /* "   " ": Option length: 4 octets */
   uint8_t  preflen;          /* "   " ": Prefix length */
   uint8_t  flags;            /* "   " ": Flags */
-  uint16_t vlifetime[2];     /* "   " ": Valid lifetime */
-  uint16_t plifetime[2];     /* Octet 2: Preferred lifetime */
+  uint32_t vlifetime;        /* "   " ": Valid lifetime */
+  uint32_t plifetime;        /* Octet 2: Preferred lifetime */
   uint16_t reserved[2];      /* "   " ": Reserved */
   uint16_t prefix[8];        /* Octets 3-4: Prefix */
 };
@@ -330,7 +330,7 @@ struct icmpv6_mtu_s
   uint8_t  opttype;          /* Octet 1: Option Type: ICMPv6_OPT_MTU */
   uint8_t  optlen;           /* "   " ": Option length: 1 octet */
   uint16_t reserved;         /* "   " ": Reserved */
-  uint16_t mtu[2];           /* "   " ": MTU */
+  uint32_t mtu;              /* "   " ": MTU */
 };
 
 /* The structure holding the ICMP statistics that are gathered if
@@ -362,36 +362,6 @@ extern "C"
 /****************************************************************************
  * Public Function Prototypes
  ****************************************************************************/
-
-/****************************************************************************
- * Name: imcp_ping
- *
- * Description:
- *   Send a ECHO request and wait for the ECHO response
- *
- * Parameters:
- *   addr  - The IP address of the peer to send the ICMP ECHO request to
- *           in network order.
- *   id    - The ID to use in the ICMP ECHO request.  This number should be
- *           unique; only ECHO responses with this matching ID will be
- *           processed (host order)
- *   seqno - The sequence number used in the ICMP ECHO request.  NOT used
- *           to match responses (host order)
- *   dsecs - Wait up to this many deci-seconds for the ECHO response to be
- *           returned (host order).
- *
- * Return:
- *   seqno of received ICMP ECHO with matching ID (may be different
- *   from the seqno argument (may be a delayed response from an earlier
- *   ping with the same ID). Or a negated errno on any failure.
- *
- * Assumptions:
- *   Called from the user level with interrupts enabled.
- *
- ****************************************************************************/
-
-int icmpv6_ping(net_ipv6addr_t addr, uint16_t id, uint16_t seqno,
-                uint16_t datalen, int dsecs);
 
 #undef EXTERN
 #ifdef __cplusplus

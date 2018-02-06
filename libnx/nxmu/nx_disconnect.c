@@ -39,6 +39,7 @@
 
 #include <nuttx/config.h>
 
+#include <stdio.h>
 #include <mqueue.h>
 #include <errno.h>
 #include <debug.h>
@@ -60,7 +61,7 @@
  * Input Parameters:
  *   handle - the handle returned by nx_connect
  *
- * Return:
+ * Returned Value:
  *   OK on success; ERROR on failure with the errno set appropriately.
  *   NOTE that handle will no long be valid upon return.
  *
@@ -70,6 +71,7 @@ void nx_disconnect(NXHANDLE handle)
 {
   FAR struct nxfe_conn_s *conn = (FAR struct nxfe_conn_s *)handle;
   struct nxsvrmsg_s       outmsg;
+  char                    climqname[NX_CLIENT_MXNAMELEN];
   int                     ret;
 
   /* Inform the server that this client no longer exists */
@@ -83,5 +85,11 @@ void nx_disconnect(NXHANDLE handle)
   if (ret < 0)
     {
       gerr("ERROR: nxmu_sendserver() returned %d\n", ret);
+    }
+  else
+    {
+      snprintf(climqname, sizeof(climqname),
+               NX_CLIENT_MQNAMEFMT, conn->cid);
+      (void)mq_unlink(climqname);
     }
 }

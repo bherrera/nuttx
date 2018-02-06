@@ -1,7 +1,7 @@
 /****************************************************************************
  * drivers/power/pm_register.c
  *
- *   Copyright (C) 2011-2012 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2011-2012, 2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -59,11 +59,11 @@
  *   This function is called by a device driver in order to register to
  *   receive power management event callbacks.
  *
- * Input parameters:
+ * Input Parameters:
  *   callbacks - An instance of struct pm_callback_s providing the driver
  *               callback functions.
  *
- * Returned value:
+ * Returned Value:
  *    Zero (OK) on success; otherwise a negater errno value is returned.
  *
  ****************************************************************************/

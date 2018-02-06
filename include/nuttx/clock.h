@@ -178,6 +178,19 @@
 #define TICK2HSEC(tick)       (((tick)+(TICK_PER_HSEC/2))/TICK_PER_HSEC) /* Rounds */
 #define TICK2SEC(tick)        (((tick)+(TICK_PER_SEC/2))/TICK_PER_SEC)   /* Rounds */
 
+#if defined(CONFIG_DEBUG_FEATURES) && defined(CONFIG_SYSTEM_TIME64) && \
+    defined(CONFIG_CLOCK_MONOTONIC)
+/* Initial system timer ticks value close to maximum 32-bit value, to test
+ * 64-bit system-timer after going over 32-bit value. This is to make errors
+ * of casting 64-bit system-timer to 32-bit variables more visible.
+ */
+
+#  define INITIAL_SYSTEM_TIMER_TICKS \
+    ((uint64_t)(UINT32_MAX - (TICK_PER_SEC * 5)))
+#else
+#  define INITIAL_SYSTEM_TIMER_TICKS 0
+#endif
+
 /****************************************************************************
  * Public Types
  ****************************************************************************/
@@ -259,7 +272,7 @@ EXTERN volatile systime_t g_system_timer;
  * Parameters:
  *   None
  *
- * Return Value:
+ * Returned Value:
  *   None
  *
  * Assumptions:
@@ -289,7 +302,7 @@ void clock_synchronize(void);
  * Parameters:
  *   diff:  amount of time system-time is adjusted forward with RTC
  *
- * Return Value:
+ * Returned Value:
  *   None
  *
  * Assumptions:
@@ -316,7 +329,7 @@ void clock_resynchronize(FAR struct timespec *rtc_diff);
  * Parameters:
  *   None
  *
- * Return Value:
+ * Returned Value:
  *   The current value of the system timer counter
  *
  * Assumptions:
@@ -337,7 +350,7 @@ systime_t clock_systimer(void);
  * Parameters:
  *   ts - Location to return the time
  *
- * Return Value:
+ * Returned Value:
  *   Current version always returns OK
  *
  * Assumptions:
@@ -356,7 +369,7 @@ int clock_systimespec(FAR struct timespec *ts);
  *   pid - The task ID of the thread of interest.  pid == 0 is the IDLE thread.
  *   cpuload - The location to return the CPU load
  *
- * Return Value:
+ * Returned Value:
  *   OK (0) on success; a negated errno value on failure.  The only reason
  *   that this function can fail is if 'pid' no longer refers to a valid
  *   thread.

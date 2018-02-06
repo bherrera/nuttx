@@ -125,7 +125,7 @@
 /* Used with setlogmask() */
 
 #define LOG_MASK(p)   (1 << (p))
-#define LOG_UPTO(p)   ((1 << (p)) - 1)
+#define LOG_UPTO(p)   ((1 << ((p)+1)) - 1)
 #define LOG_ALL       0xff
 
 /****************************************************************************
@@ -212,8 +212,8 @@ void closelog(void);
  *
  ****************************************************************************/
 
-int syslog(int priority, FAR const IPTR char *format, ...);
-int vsyslog(int priority, FAR const IPTR char *src, va_list ap);
+int syslog(int priority, FAR const IPTR char *fmt, ...);
+int vsyslog(int priority, FAR const IPTR char *fmt, va_list ap);
 
 /****************************************************************************
  * Name: setlogmask

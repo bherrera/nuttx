@@ -1,7 +1,7 @@
 /****************************************************************************
  * config/viewtool-stm32f107/src/stm32_appinit.c
  *
- *   Copyright (C) 2013, 2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,80 +39,16 @@
 
 #include <nuttx/config.h>
 
-#include <sys/types.h>
-#include <syslog.h>
-#include <errno.h>
-#include <debug.h>
-
 #include <nuttx/board.h>
-
-#ifdef CONFIG_RTC_DRIVER
-#  include <nuttx/timers/rtc.h>
-#  include "stm32_rtc.h"
-#endif
 
 #include "viewtool_stm32f107.h"
 
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
-/* Configuration ************************************************************/
 
-/* Default MMC/SD SLOT number */
-
-#ifdef HAVE_MMCSD
-#  if defined(CONFIG_NSH_MMCSDSLOTNO) && CONFIG_NSH_MMCSDSLOTNO != VIEWTOOL_MMCSD_SLOTNO
-#    error "Only one MMC/SD slot:  VIEWTOOL_MMCSD_SLOTNO"
-#    undef  CONFIG_NSH_MMCSDSLOTNO
-#    define CONFIG_NSH_MMCSDSLOTNO VIEWTOOL_MMCSD_SLOTNO
-#  endif
-
-#  ifndef CONFIG_NSH_MMCSDSLOTNO
-#    define CONFIG_NSH_MMCSDSLOTNO VIEWTOOL_MMCSD_SLOTNO
-#  endif
-#endif
-
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
-
-/****************************************************************************
- * Name: rtc_driver_initialize
- *
- * Description:
- *   Initialize and register the RTC driver.
- *
- ****************************************************************************/
-
-#ifdef HAVE_RTC_DRIVER
-static int rtc_driver_initialize(void)
-{
-  FAR struct rtc_lowerhalf_s *lower;
-  int ret;
-
-  /* Instantiate the STM32 lower-half RTC driver */
-
-  lower = stm32_rtc_lowerhalf();
-  if (lower == NULL)
-    {
-      serr("ERROR: Failed to instantiate the RTC lower-half driver\n");
-      ret = -ENOMEM;
-    }
-  else
-    {
-      /* Bind the lower half driver and register the combined RTC driver
-       * as /dev/rtc0
-       */
-
-      ret = rtc_initialize(0, lower);
-      if (ret < 0)
-        {
-          serr("ERROR: Failed to bind/register the RTC driver: %d\n", ret);
-        }
-    }
-
-  return ret;
-}
+#ifndef OK
+#  define OK 0
 #endif
 
 /****************************************************************************
@@ -146,42 +82,13 @@ static int rtc_driver_initialize(void)
 
 int board_app_initialize(uintptr_t arg)
 {
-  int ret;
+#ifdef CONFIG_BOARD_INITIALIZE
+  /* Board initialization already performed by board_initialize() */
 
-#ifdef HAVE_RTC_DRIVER
-  ret = rtc_driver_initialize();
-  if (ret < 0)
-    {
-      syslog(LOG_ERR, "ERROR: rtc_driver_initialize failed: %d\n", ret);
-    }
-#endif
-
-#ifdef HAVE_MMCSD
-  ret = stm32_sdinitialize(CONFIG_NSH_MMCSDSLOTNO);
-  if (ret < 0)
-    {
-      syslog(LOG_ERR, "ERROR: stm32_sdinitialize failed: %d\n", ret);
-    }
-#endif
-
-#ifdef CONFIG_CAN
-  /* Initialize CAN and register the CAN driver. */
-
-  ret = stm32_can_setup();
-  if (ret < 0)
-    {
-      syslog(LOG_ERR, "ERROR: stm32_can_setup failed: %d\n", ret);
-    }
-#endif
-
-#ifdef CONFIG_SENSORS_MPL115A
-  ret = stm32_mpl115ainitialize("/dev/press");
-  if (ret < 0)
-    {
-      syslog(LOG_ERR, "ERROR: stm32_mpl115ainitialize failed: %d\n", ret);
-    }
-#endif
-
-  UNUSED(ret);
   return OK;
+#else
+  /* Perform board-specific initialization */
+
+  return stm32_bringup();
+#endif
 }

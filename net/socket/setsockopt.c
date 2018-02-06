@@ -1,8 +1,8 @@
 /****************************************************************************
  * net/socket/setsockopt.c
  *
- *   Copyright (C) 2007, 2008, 2011-2012, 2014-2015 Gregory Nutt. All rights
- *     reserved.
+ *   Copyright (C) 2007, 2008, 2011-2012, 2014-2015, 2017 Gregory Nutt. All
+ *     rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -80,7 +80,8 @@
  *   value_len The length of the argument value
  *
  * Returned Value:
- *  0 on success; -1 on failure
+ *  Returns zero (OK) on success.  On failure, it returns a negated errno
+ *  value to indicate the nature of the error:
  *
  *  EDOM
  *    The send and receive timeout values are too big to fit into the
@@ -108,21 +109,17 @@
 int psock_setsockopt(FAR struct socket *psock, int level, int option,
                      FAR const void *value, socklen_t value_len)
 {
-  int errcode;
-
   /* Verify that the socket option if valid (but might not be supported ) */
 
   if (!_SO_SETVALID(option) || !value)
     {
-      errcode = EINVAL;
-      goto errout;
+      return -EINVAL;
     }
 
 #ifdef CONFIG_NET_USRSOCK
   if (psock->s_type == SOCK_USRSOCK_TYPE)
     {
       FAR struct usrsock_conn_s *conn = psock->s_conn;
-      int ret;
 
       DEBUGASSERT(conn);
 
@@ -138,14 +135,7 @@ int psock_setsockopt(FAR struct socket *psock, int level, int option,
 
           default:          /* Other options are passed to usrsock daemon. */
             {
-              ret = usrsock_setsockopt(conn, level, option, value, value_len);
-              if (ret < 0)
-                {
-                  errcode = -ret;
-                  goto errout;
-              }
-
-              return OK;
+              return usrsock_setsockopt(conn, level, option, value, value_len);
             }
         }
     }
@@ -176,8 +166,7 @@ int psock_setsockopt(FAR struct socket *psock, int level, int option,
 
           if (value_len != sizeof(int))
             {
-              errcode = EINVAL;
-              goto errout;
+              return -EINVAL;
             }
 
           /* Get the value.  Is the option being set or cleared? */
@@ -215,8 +204,7 @@ int psock_setsockopt(FAR struct socket *psock, int level, int option,
 
           if (tv == NULL || value_len != sizeof(struct timeval))
             {
-              errcode = EINVAL;
-              goto errout;
+              return -EINVAL;
             }
 
           /* Get the timeout value.  Any microsecond remainder will be
@@ -258,8 +246,7 @@ int psock_setsockopt(FAR struct socket *psock, int level, int option,
 
           if (value_len < sizeof(FAR struct linger))
             {
-              errcode = EINVAL;
-              goto errout;
+              return -EINVAL;
             }
 
           /* Get the value.  Is the option being set or cleared? */
@@ -303,15 +290,10 @@ int psock_setsockopt(FAR struct socket *psock, int level, int option,
       case SO_TYPE:       /* Reports the socket type */
 
       default:
-        errcode = ENOPROTOOPT;
-        goto errout;
+        return -ENOPROTOOPT;
     }
 
   return OK;
-
-errout:
-  set_errno(errcode);
-  return ERROR;
 }
 
 /****************************************************************************
@@ -366,6 +348,7 @@ errout:
 int setsockopt(int sockfd, int level, int option, const void *value, socklen_t value_len)
 {
   FAR struct socket *psock;
+  int ret;
 
   /* Get the underlying socket structure */
   /* Verify that the sockfd corresponds to valid, allocated socket */
@@ -379,7 +362,14 @@ int setsockopt(int sockfd, int level, int option, const void *value, socklen_t v
 
   /* Then let psock_setockopt() do all of the work */
 
-  return psock_setsockopt(psock, level, option, value, value_len);
+  ret = psock_setsockopt(psock, level, option, value, value_len);
+  if (ret < 0)
+    {
+      set_errno(-ret);
+      return ERROR;
+    }
+
+  return OK;
 }
 
 #endif /* CONFIG_NET && CONFIG_NET_SOCKOPTS */

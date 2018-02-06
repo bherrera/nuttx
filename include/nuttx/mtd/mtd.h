@@ -80,6 +80,8 @@
                                            *      0=Use normal memory region
                                            *      1=Use alternate/extended memory
                                            * OUT: None */
+#define MTDIOC_ECCSTATUS  _MTDIOC(0x0008) /* IN:  Pointer to uint8_t
+                                           * OUT: ECC status */
 
 /* Macros to hide implementation */
 
@@ -241,7 +243,7 @@ extern "C"
  *   partitions, that mutual exclusion would be provided by the file system
  *   above the FLASH driver.
  *
- * Input parameters:
+ * Input Parameters:
  *   mtd        - The MTD device to be partitioned
  *   firstblock - The offset in bytes to the first block
  *   nblocks    - The number of blocks in the partition
@@ -425,6 +427,15 @@ FAR struct mtd_dev_s *is25xp_initialize(FAR struct spi_dev_s *dev);
 FAR struct mtd_dev_s *m25p_initialize(FAR struct spi_dev_s *dev);
 
 /****************************************************************************
+ * Name: mx35_initialize
+ *
+ * Description:
+ *
+ ****************************************************************************/
+
+FAR struct mtd_dev_s *mx35_initialize(FAR struct spi_dev_s *dev);
+
+/****************************************************************************
  * Name: rammtd_initialize
  *
  * Description:
@@ -561,31 +572,68 @@ FAR struct mtd_dev_s *n25qxxx_initialize(FAR struct qspi_dev_s *qspi,
                                          bool unprotect);
 
 /****************************************************************************
+ * Name: blockmtd_initialize
+ *
+ * Description:
+ *   Create and initialize a BLOCK MTD device instance.
+ *
+ * Input Parameters:
+ *   path - Path name of the block device backing the MTD device
+ *
+ ****************************************************************************/
+
+FAR struct mtd_dev_s *blockmtd_initialize(FAR const char *path, size_t offset,
+                                          size_t mtdlen, int16_t sectsize,
+                                          int32_t erasesize);
+
+/****************************************************************************
+ * Name: blockmtd_teardown
+ *
+ * Description:
+ *   Teardown a previously created blockmtd device.
+ *
+ * Input Parameters:
+ *   dev - Pointer to the mtd driver instance.
+ *
+ ****************************************************************************/
+
+void blockmtd_teardown(FAR struct mtd_dev_s *dev);
+
+/****************************************************************************
  * Name: filemtd_initialize
  *
  * Description:
- *   Create a file backed MTD device.
+ *   Create and initialize a FILE MTD device instance.
+ *
+ * Input Parameters:
+ *   path - Path name of the file backing the MTD device
  *
  ****************************************************************************/
 
 FAR struct mtd_dev_s *filemtd_initialize(FAR const char *path, size_t offset,
-                        int16_t sectsize, int32_t erasesize);
+                                        int16_t sectsize, int32_t erasesize);
 
 /****************************************************************************
  * Name: filemtd_teardown
  *
  * Description:
- *   Tear down a filemtd device.
+ *   Teardown a previously created filemtd device.
+ *
+ * Input Parameters:
+ *   dev - Pointer to the mtd driver instance.
  *
  ****************************************************************************/
 
-void filemtd_teardown(FAR struct mtd_dev_s* mtd);
+void filemtd_teardown(FAR struct mtd_dev_s* dev);
 
 /****************************************************************************
  * Name: filemtd_isfilemtd
  *
  * Description:
- *   Test if MTD is a filemtd device.
+ *   Tests if the provided mtd is a filemtd or blockmtd device.
+ *
+ * Input Parameters:
+ *   mtd - Pointer to the mtd.
  *
  ****************************************************************************/
 

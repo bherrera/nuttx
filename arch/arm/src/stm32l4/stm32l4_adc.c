@@ -57,6 +57,7 @@
 #include <nuttx/irq.h>
 #include <nuttx/arch.h>
 #include <nuttx/fs/ioctl.h>
+#include <nuttx/power/pm.h>
 #include <nuttx/analog/adc.h>
 #include <nuttx/analog/ioctl.h>
 
@@ -88,6 +89,12 @@
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
+
+#ifndef container_of
+#  define container_of(ptr, type, member) \
+          ((type *)((intptr_t)(ptr) - offsetof(type, member)))
+#endif
+
 /* RCC reset ****************************************************************/
 
 #define STM32L4_RCC_RSTR STM32L4_RCC_AHB2RSTR
@@ -176,11 +183,14 @@ struct stm32_dev_s
   uint8_t current;      /* Current ADC channel being converted */
 #ifdef ADC_HAVE_DMA
   uint8_t dmachan;      /* DMA channel needed by this ADC */
-  bool    hasdma;       /* True: This channel supports DMA */
+  bool    hasdma;       /* True: This ADC supports DMA */
+#endif
+#ifdef ADC_HAVE_DFSDM
+  bool    hasdfsdm;     /* True: This ADC routes its output to DFSDM */
 #endif
 #ifdef ADC_HAVE_TIMER
   uint8_t trigger;      /* Timer trigger channel: 0=CC1, 1=CC2, 2=CC3,
-                         * 3=CC4, 4=TRGO */
+                         * 3=CC4, 4=TRGO, 5=TRGO2 */
 #endif
   xcpt_t   isr;         /* Interrupt handler for this ADC block */
   uint32_t base;        /* Base address of registers unique to this ADC
@@ -190,6 +200,10 @@ struct stm32_dev_s
   uint32_t extsel;      /* EXTSEL value used by this ADC block */
   uint32_t pclck;       /* The PCLK frequency that drives this timer */
   uint32_t freq;        /* The desired frequency of conversions */
+#endif
+
+#ifdef CONFIG_PM
+  struct pm_callback_s pm_callback;
 #endif
 
 #ifdef ADC_HAVE_DMA
@@ -248,7 +262,17 @@ static void adc_dmaconvcallback(DMA_HANDLE handle, uint8_t isr,
                                 FAR void *arg);
 #endif
 
+#ifdef ADC_HAVE_DFSDM
+static int adc_setoffset(FAR struct stm32_dev_s *priv, uint8_t ch, uint8_t i,
+                         uint16_t offset);
+#endif
+
 static void adc_startconv(FAR struct stm32_dev_s *priv, bool enable);
+
+#ifdef CONFIG_PM
+static int adc_pm_prepare(struct pm_callback_s *cb, int domain,
+                          enum pm_state_e state);
+#endif
 
 /* ADC Interrupt Handler */
 
@@ -306,6 +330,15 @@ static struct stm32_dev_s g_adcpriv1 =
   .dmachan     = ADC1_DMA_CHAN,
   .hasdma      = true,
 #endif
+#ifdef ADC1_HAVE_DFSDM
+  .hasdfsdm    = true,
+#endif
+#ifdef CONFIG_PM
+  .pm_callback =
+    {
+      .prepare = adc_pm_prepare,
+    }
+#endif
 };
 
 static struct adc_dev_s g_adcdev1 =
@@ -335,6 +368,15 @@ static struct stm32_dev_s g_adcpriv2 =
   .dmachan     = ADC2_DMA_CHAN,
   .hasdma      = true,
 #endif
+#ifdef ADC2_HAVE_DFSDM
+  .hasdfsdm    = true,
+#endif
+#ifdef CONFIG_PM
+  .pm_callback =
+    {
+      .prepare = adc_pm_prepare,
+    }
+#endif
 };
 
 static struct adc_dev_s g_adcdev2 =
@@ -363,6 +405,15 @@ static struct stm32_dev_s g_adcpriv3 =
 #ifdef ADC3_HAVE_DMA
   .dmachan     = ADC3_DMA_CHAN,
   .hasdma      = true,
+#endif
+#ifdef ADC3_HAVE_DFSDM
+  .hasdfsdm    = true,
+#endif
+#ifdef CONFIG_PM
+  .pm_callback =
+    {
+      .prepare = adc_pm_prepare,
+    }
 #endif
 };
 
@@ -541,7 +592,7 @@ static void tim_modifyreg(FAR struct stm32_dev_s *priv, int offset,
  * Description:
  *   Dump all timer registers.
  *
- * Input parameters:
+ * Input Parameters:
  *   priv - A reference to the ADC block status
  *
  * Returned Value:
@@ -958,6 +1009,32 @@ static int adc_timinit(FAR struct stm32_dev_s *priv)
 #endif
 
 /****************************************************************************
+ * Name: adc_pm_prepare
+ *
+ * Description:
+ *   Called by power management framework when it wants to enter low power
+ *   states. Check if ADC is in progress and if so prevent from entering STOP.
+ *
+ ****************************************************************************/
+#ifdef CONFIG_PM
+static int adc_pm_prepare(struct pm_callback_s *cb, int domain,
+                          enum pm_state_e state)
+{
+  FAR struct stm32_dev_s *priv =
+      container_of(cb, struct stm32_dev_s, pm_callback);
+  uint32_t regval;
+
+  regval = adc_getreg(priv, STM32L4_ADC_CR_OFFSET);
+  if ((state >= PM_IDLE) && (regval & ADC_CR_ADSTART))
+    {
+      return -EBUSY;
+    }
+
+  return OK;
+}
+#endif
+
+/****************************************************************************
  * Name: adc_wdog_enable
  *
  * Description:
@@ -1068,7 +1145,8 @@ static void adc_rccreset(FAR struct stm32_dev_s *priv, bool reset)
 /****************************************************************************
  * Name: adc_enable
  *
- * Description    : Enables the specified ADC peripheral.
+ * Description:
+ *   Enables the specified ADC peripheral.
  *
  * Input Parameters:
  *   priv - A reference to the ADC block status
@@ -1227,6 +1305,19 @@ static int adc_setup(FAR struct adc_dev_s *dev)
       /* Enable DMA */
 
       setbits |= ADC_CFGR_DMAEN;
+    }
+#endif
+
+#ifdef ADC_HAVE_DFSDM
+  if (priv->hasdfsdm)
+    {
+      /* Disable DMA */
+
+      clrbits |= ADC_CFGR_DMAEN;
+
+      /* Enable routing to DFSDM */
+
+      setbits |= ADC_CFGR_DFSDMCFG;
     }
 #endif
 
@@ -1456,6 +1547,35 @@ static bool adc_internal(FAR struct stm32_dev_s * priv, uint32_t *adc_ccr)
 }
 
 /****************************************************************************
+ * Name: adc_set_offset
+ ****************************************************************************/
+
+#ifdef ADC_HAVE_DFSDM
+static int adc_setoffset(FAR struct stm32_dev_s *priv, uint8_t ch, uint8_t i,
+                         uint16_t offset)
+{
+  uint32_t reg;
+  uint32_t regval;
+
+  if (i >= 4)
+    {
+      /* There are only four offset registers. */
+
+      return -E2BIG;
+    }
+
+  reg = STM32L4_ADC_OFR1_OFFSET + i * 4;
+
+  regval = ADC_OFR_OFFSETY_EN;
+  adc_putreg(priv, reg, regval);
+
+  regval |= ADC_OFR_OFFSETY_CH(ch) | ADC_OFR_OFFSETY(offset);
+  adc_putreg(priv, reg, regval);
+  return OK;
+}
+#endif
+
+/****************************************************************************
  * Name: adc_set_ch
  *
  * Description:
@@ -1508,6 +1628,25 @@ static int adc_set_ch(FAR struct adc_dev_s *dev, uint8_t ch)
   bits = ((uint32_t)priv->nchannels - 1) << ADC_SQR1_L_SHIFT |
          adc_sqrbits(priv, ADC_SQR1_FIRST, ADC_SQR1_LAST, ADC_SQR1_SQ_OFFSET);
   adc_modifyreg(priv, STM32L4_ADC_SQR1_OFFSET, ~ADC_SQR1_RESERVED, bits);
+
+#ifdef ADC_HAVE_DFSDM
+  if (priv->hasdfsdm)
+    {
+      /* Convert 12-bit ADC result to signed 16-bit. */
+
+      if (ch == 0)
+        {
+          for (i = 0; i < priv->cchannels; i++)
+            {
+              adc_setoffset(priv, priv->chanlist[i], i, 0x800);
+            }
+        }
+      else
+        {
+          adc_setoffset(priv, priv->current, 0, 0x800);
+        }
+    }
+#endif
 
   return OK;
 }
@@ -1883,6 +2022,14 @@ struct adc_dev_s *stm32l4_adc_initialize(int intf, FAR const uint8_t *chanlist,
 
   priv->cchannels = cchannels;
   memcpy(priv->chanlist, chanlist, cchannels);
+
+#ifdef CONFIG_PM
+  if (pm_register(&priv->pm_callback) != OK)
+    {
+      aerr("Power management registration failed\n");
+      return NULL;
+    }
+#endif
 
   return dev;
 }

@@ -447,8 +447,8 @@
 #  define HRTIM_TIMDT_DTPRSC_110    (6 << HRTIM_TIMDT_DTPRSC_SHIFT)
 #  define HRTIM_TIMDT_DTPRSC_111    (7 << HRTIM_TIMDT_DTPRSC_SHIFT)
 #define HRTIM_TIMDT_DTRSLK          (1 << 14) /* Bit 14: Deadtime Rising Sign Lock */
-#define HRTIM_TIMDT_DTRLK           (1 << 14) /* Bit 15: Deadtime Rising Lock */
-#define HRTIM_TIMDT_DTF_SHIFT       0 /* Bits 16-24: Deadtime Falling Value */
+#define HRTIM_TIMDT_DTRLK           (1 << 15) /* Bit 15: Deadtime Rising Lock */
+#define HRTIM_TIMDT_DTF_SHIFT       16 /* Bits 16-24: Deadtime Falling Value */
 #define HRTIM_TIMDT_DTF_MASK        (0x1ff << HRTIM_TIMDT_DTF_SHIFT)
 #define HRTIM_TIMDT_SDTF            (1 << 25) /* Bit 25: Sign Deadtime Falling Value */
 #define HRTIM_TIMDT_DTFSLK          (1 << 30) /* Bit 30: Deadtime Falling Sign Lock */
@@ -949,13 +949,13 @@
 
 /* Timer X Chopper Register */
 
-#define HRTIM_TIMCHP_CARFRQ_SHIFT     0 /* Bits 0-3 */
+#define HRTIM_TIMCHP_CARFRQ_SHIFT     0 /* Bits 0-3: Chopper carrier frequency */
 #define HRTIM_TIMCHP_CARFRQ_MASK      (15 << HRTIM_TIMCHP_CARFRQ_SHIFT)
 
-#define HRTIM_TIMCHP_CARDTY_SHIFT     4 /* Bits 4-6 */
+#define HRTIM_TIMCHP_CARDTY_SHIFT     4 /* Bits 4-6: Chopper duty cycle */
 #define HRTIM_TIMCHP_CARDTY_MASK      (7 << HRTIM_TIMCHP_CARDTY_SHIFT)
 
-#define HRTIM_TIMCHP_STRTPW_SHIFT     7 /* Bits 7-10 */
+#define HRTIM_TIMCHP_STRTPW_SHIFT     7 /* Bits 7-10: Chopper start pulsewidth */
 #define HRTIM_TIMCHP_STRTPW_MASK      (15 << HRTIM_TIMCHP_STRTPW_SHIFT)
 
 /* Timer X Capture 1 Control Register */

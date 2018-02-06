@@ -50,6 +50,7 @@
 #include <debug.h>
 
 #include <nuttx/kmalloc.h>
+#include <nuttx/signal.h>
 #include <nuttx/fs/fs.h>
 #include <nuttx/i2c/i2c_master.h>
 #include <nuttx/sensors/bmp180.h>
@@ -317,7 +318,7 @@ static int bmp180_checkid(FAR struct bmp180_dev_s *priv)
   devid = bmp180_getreg8(priv, BMP180_DEVID);
   sninfo("devid: 0x%02x\n", devid);
 
-  if (devid != (uint16_t) DEVID)
+  if (devid != (uint16_t)DEVID)
     {
       /* ID is not Correct */
 
@@ -402,7 +403,7 @@ static void bmp180_read_press_temp(FAR struct bmp180_dev_s *priv)
 
   /* Wait 5ms */
 
-  usleep(5000);
+  nxsig_usleep(5000);
 
   /* Read temperature */
 
@@ -414,7 +415,7 @@ static void bmp180_read_press_temp(FAR struct bmp180_dev_s *priv)
 
   /* Delay 25.5ms (to OverSampling 8X) */
 
-  usleep(25500);
+  nxsig_usleep(25500);
 
   /* Read pressure */
 

@@ -1,7 +1,7 @@
 /****************************************************************************
  * fs/procfs/fs_procfs.c
  *
- *   Copyright (C) 2013-2017 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2013-2018 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -62,6 +62,8 @@
 #include <nuttx/fs/dirent.h>
 #include <nuttx/lib/regex.h>
 
+#include "mount/mount.h"
+
 #if !defined(CONFIG_DISABLE_MOUNTPOINT) && defined(CONFIG_FS_PROCFS)
 
 /****************************************************************************
@@ -75,8 +77,9 @@
  ****************************************************************************/
 
 extern const struct procfs_operations proc_operations;
+extern const struct procfs_operations irq_operations;
 extern const struct procfs_operations cpuload_operations;
-extern const struct procfs_operations kmm_operations;
+extern const struct procfs_operations meminfo_operations;
 extern const struct procfs_operations module_operations;
 extern const struct procfs_operations uptime_operations;
 
@@ -90,6 +93,7 @@ extern const struct procfs_operations net_procfsoperations;
 extern const struct procfs_operations net_procfs_routeoperations;
 extern const struct procfs_operations mtd_procfsoperations;
 extern const struct procfs_operations part_procfsoperations;
+extern const struct procfs_operations mount_procfsoperations;
 extern const struct procfs_operations smartfs_procfsoperations;
 
 /* And even worse, this one is specific to the STM32.  The solution to
@@ -121,16 +125,36 @@ static const struct procfs_entry_s g_procfs_entries[] =
   { "cpuload",       &cpuload_operations,         PROCFS_FILE_TYPE   },
 #endif
 
-#if defined(CONFIG_MM_KERNEL_HEAP) && !defined(CONFIG_FS_PROCFS_EXCLUDE_KMM)
-  { "kmm",           &kmm_operations,             PROCFS_FILE_TYPE   },
+#ifdef CONFIG_SCHED_IRQMONITOR
+  { "irqs",          &irq_operations,             PROCFS_FILE_TYPE   },
+#endif
+
+#ifndef CONFIG_FS_PROCFS_EXCLUDE_MEMINFO
+  { "meminfo",       &meminfo_operations,         PROCFS_FILE_TYPE   },
 #endif
 
 #if defined(CONFIG_MODULE) && !defined(CONFIG_FS_PROCFS_EXCLUDE_MODULE)
   { "modules",       &module_operations,          PROCFS_FILE_TYPE   },
 #endif
 
+#ifndef CONFIG_FS_PROCFS_EXCLUDE_BLOCKS
+  { "fs/blocks",     &mount_procfsoperations,     PROCFS_FILE_TYPE   },
+#endif
+
+#ifndef CONFIG_FS_PROCFS_EXCLUDE_MOUNT
+  { "fs/mount",      &mount_procfsoperations,     PROCFS_FILE_TYPE   },
+#endif
+
+#ifndef CONFIG_FS_PROCFS_EXCLUDE_USAGE
+  { "fs/usage",      &mount_procfsoperations,     PROCFS_FILE_TYPE   },
+#endif
+
 #if defined(CONFIG_FS_SMARTFS) && !defined(CONFIG_FS_PROCFS_EXCLUDE_SMARTFS)
   { "fs/smartfs**",  &smartfs_procfsoperations,   PROCFS_UNKOWN_TYPE },
+#endif
+
+#if defined(CONFIG_MTD) && !defined(CONFIG_FS_PROCFS_EXCLUDE_MTD)
+  { "mtd",           &mtd_procfsoperations,       PROCFS_FILE_TYPE   },
 #endif
 
 #if defined(CONFIG_NET) && !defined(CONFIG_FS_PROCFS_EXCLUDE_NET)
@@ -140,10 +164,6 @@ static const struct procfs_entry_s g_procfs_entries[] =
   { "net/route/**",  &net_procfs_routeoperations, PROCFS_UNKOWN_TYPE },
 #endif
   { "net/**",        &net_procfsoperations,       PROCFS_UNKOWN_TYPE },
-#endif
-
-#if defined(CONFIG_MTD) && !defined(CONFIG_FS_PROCFS_EXCLUDE_MTD)
-  { "mtd",           &mtd_procfsoperations,       PROCFS_FILE_TYPE   },
 #endif
 
 #if defined(CONFIG_MTD_PARTITION) && !defined(CONFIG_FS_PROCFS_EXCLUDE_PARTITIONS)
@@ -242,6 +262,7 @@ const struct mountpt_operations procfs_operations =
   NULL,              /* sync */
   procfs_dup,        /* dup */
   procfs_fstat,      /* fstat */
+  NULL,              /* truncate */
 
   procfs_opendir,    /* opendir */
   procfs_closedir,   /* closedir */
@@ -780,7 +801,13 @@ static int procfs_readdir(struct inode *mountpt, struct fs_dirent_s *dir)
               strncpy(dir->fd_dir.d_name, name, level0->lastlen);
               dir->fd_dir.d_name[level0->lastlen] = '\0';
 
-              if (entry->type == PROCFS_DIR_TYPE)
+              /* If the entry is a directory type OR if the reported name is
+               * only a sub-string of the entry (meaning that it contains
+               * '/'), then report this entry as a directory.
+               */
+
+              if (entry->type == PROCFS_DIR_TYPE ||
+                  level0->lastlen != strlen(name))
                 {
                   dir->fd_dir.d_type = DTYPE_DIRECTORY;
                 }

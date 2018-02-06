@@ -1,7 +1,7 @@
 /****************************************************************************
  * mm/mm_heap/mm_sem.c
  *
- *   Copyright (C) 2007-2009, 2013 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2009, 2013, 2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,14 +40,36 @@
 #include <nuttx/config.h>
 
 #include <unistd.h>
+#include <semaphore.h>
 #include <errno.h>
 #include <assert.h>
 
+#include <nuttx/semaphore.h>
 #include <nuttx/mm/mm.h>
 
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
+
+/* Internal nxsem_* interfaces are not available in the user space in
+ * PROTECTED and KERNEL builds.  In that context, the application semaphore
+ * interfaces must be used.  The differences between the two sets of
+ * interfaces are:  (1) the nxsem_* interfaces do not cause cancellation
+ * points and (2) they do not modify the errno variable.
+ *
+ * See additional definitions in include/nuttx/semaphore.h
+ *
+ * REVISIT:  The fact that sem_wait() is a cancellation point is an issue
+ * and does cause a violation:  It makes all of the memory management
+ * interfaces into cancellation points when used from user space in the
+ * PROTECTED and KERNEL builds.
+ */
+
+#if defined(CONFIG_BUILD_FLAT) || defined(__KERNEL__)
+#  define _SEM_GETERROR(r)
+#else
+#  define _SEM_GETERROR(r)  (r) = -errno
+#endif
 
 /* Define the following to enable semaphore state monitoring */
 //#define MONITOR_MM_SEMAPHORE 1
@@ -87,7 +109,7 @@ void mm_seminitialize(FAR struct mm_heap_s *heap)
    * private data sets).
    */
 
-  (void)sem_init(&heap->mm_semaphore, 0, 1);
+  (void)nxsem_init(&heap->mm_semaphore, 0, 1);
 
   heap->mm_holder      = -1;
   heap->mm_counts_held = 0;
@@ -107,6 +129,7 @@ void mm_seminitialize(FAR struct mm_heap_s *heap)
 int mm_trysemaphore(FAR struct mm_heap_s *heap)
 {
   pid_t my_pid = getpid();
+  int ret;
 
   /* Do I already have the semaphore? */
 
@@ -121,12 +144,14 @@ int mm_trysemaphore(FAR struct mm_heap_s *heap)
     {
       /* Try to take the semaphore (perhaps waiting) */
 
-      if (sem_trywait(&heap->mm_semaphore) != 0)
+      ret = _SEM_TRYWAIT(&heap->mm_semaphore);
+      if (ret < 0)
        {
-         return ERROR;
+         _SEM_GETERROR(ret);
+         return ret;
        }
 
-      /* We have it.  Claim the stak and return */
+      /* We have it.  Claim the heap and return */
 
       heap->mm_holder      = my_pid;
       heap->mm_counts_held = 1;
@@ -157,19 +182,35 @@ void mm_takesemaphore(FAR struct mm_heap_s *heap)
     }
   else
     {
+      int ret;
+
       /* Take the semaphore (perhaps waiting) */
 
       mseminfo("PID=%d taking\n", my_pid);
-      while (sem_wait(&heap->mm_semaphore) != 0)
+      do
         {
-          /* The only case that an error should occur here is if
-           * the wait was awakened by a signal.
+          ret = _SEM_WAIT(&heap->mm_semaphore);
+
+          /* The only case that an error should occur here is if the wait
+           * was awakened by a signal.
            */
 
-          ASSERT(errno == EINTR);
+          if (ret < 0)
+            {
+#if defined(CONFIG_BUILD_FLAT) || defined(__KERNEL__)
+              DEBUGASSERT(ret == -EINTR);
+#else
+              int errcode = get_errno();
+              DEBUGASSERT(errcode == EINTR);
+              ret = -errcode;
+#endif
+            }
         }
+      while (ret == -EINTR);
 
-      /* We have it.  Claim the stake and return */
+      /* We have it (or some awful, unexpected error occurred).  Claim
+       * the semaphore and return.
+       */
 
       heap->mm_holder      = my_pid;
       heap->mm_counts_held = 1;
@@ -215,6 +256,6 @@ void mm_givesemaphore(FAR struct mm_heap_s *heap)
 
       heap->mm_holder      = -1;
       heap->mm_counts_held = 0;
-      ASSERT(sem_post(&heap->mm_semaphore) == 0);
+      DEBUGVERIFY(_SEM_POST(&heap->mm_semaphore));
     }
 }

@@ -419,6 +419,11 @@
                                           * 105 and RS-232 signal RTS.
                                           */
 
+/* CDC/ACM friendly naming */
+
+#define CDCACM_UART_DTR         CDC_DTE_PRESENT
+#define CDCACM_UART_RTS         CDC_ACTIVATE_CARRIER
+
 /* Table 58: Call State Value Definitions */
 
 #define CDC_CALLST_IDLE         0x00 /* Call is idle */
@@ -543,6 +548,22 @@
 #define CDC_UART_OVERRUN        (1 << 6) /* bOverRun Received data has been discarded due to
                                           * overrun in the device.
                                           */
+
+/* CDC/ACM friendly naming */
+
+#define CDCACM_UART_DCD          CDC_UART_RXCARRIER
+#define CDCACM_UART_DSR          CDC_UART_TXCARRIER
+
+/* "SerialState is used like a real interrupt status register. Once a notification has been
+ *  sent, the device will reset and reevaluate the different signals.  For the consistent
+ *  signals like carrier detect or transmission carrier, this will mean another notification
+ *  will not be generated until there is a state change.  For the irregular signals like
+ *  break, the incoming ring signal, or the overrun error state, this will reset their values
+ *  to zero and again will not send another notification until their state changes."
+ */
+
+#define CDC_UART_CONSISTENT     (CDC_UART_RXCARRIER | CDC_UART_TXCARRIER)
+
 /* Table 70: Call State Change Value Definitions */
 
 #define CDC_CALLST_IDLE         0x01 /* Call has become idle */
@@ -871,6 +892,7 @@ struct cdc_notification_s
   uint8_t len[2];              /* wLength - length of variable data */
   uint8_t data[1];             /* Variable length data begins here */
 };
+#define SIZEOF_NOTIFICATION_S(n) (sizeof(struct cdc_notification_s) + (n) - 1)
 
 /* Table 60: Unit Parameter Structure */
 

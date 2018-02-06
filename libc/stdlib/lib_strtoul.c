@@ -1,7 +1,7 @@
 /****************************************************************************
  * /libc/stdlib/lib_strtoul.c
  *
- *   Copyright (C) 2007, 2009, 2011, 2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007, 2009, 2011, 2016-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -56,7 +56,7 @@
  *   nptr to a long unsigned integer value according to the given base, which
  *   must be between 2 and 36 inclusive, or be the special value 0.
  *
- * Returns:
+ * Returned Value:
  *   - The converted value, if the base and number are valid
  *   - 0 if an error occurs, and set errno to:
  *     * EINVAL if base < 2 or base > 36
@@ -109,7 +109,7 @@ unsigned long strtoul(FAR const char *nptr, FAR char **endptr, int base)
 
       if (endptr)
         {
-          *endptr = (char *)nptr;
+          *endptr = (FAR char *)nptr;
         }
     }
 

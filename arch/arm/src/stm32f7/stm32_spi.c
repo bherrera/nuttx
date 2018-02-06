@@ -1,7 +1,7 @@
 /************************************************************************************
  * arm/arm/src/stm32f7/stm32_spi.c
  *
- *   Copyright (C) 2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2016-2017 Gregory Nutt. All rights reserved.
  *   Authors: Gregory Nutt <gnutt@nuttx.org>
  *            David Sidrane <david_s5@nscdg.com>
  *
@@ -36,7 +36,7 @@
 
 /************************************************************************************
  * The external functions, stm32_spi1/2/3/4/5/6select and stm32_spi1/2/3/4/5/6status
- * must be * provided by board-specific logic.  They are implementations of the select
+ * must be provided by board-specific logic.  They are implementations of the select
  * and status methods of the SPI interface defined by struct spi_ops_s (see
  * include/nuttx/spi/spi.h). All other methods (including stm32_spibus_initialize())
  * are provided by common STM32 logic.  To use this common SPI logic on your
@@ -706,18 +706,23 @@ static inline bool spi_9to16bitmode(FAR struct stm32_spidev_s *priv)
 #ifdef CONFIG_STM32F7_SPI_DMA
 static void spi_dmarxwait(FAR struct stm32_spidev_s *priv)
 {
+  int ret;
+
   /* Take the semaphore (perhaps waiting).  If the result is zero, then the DMA
    * must not really have completed???
    */
 
-  while (sem_wait(&priv->rxsem) != 0 || priv->rxresult == 0)
+  do
     {
-      /* The only case that an error should occur here is if the wait was awakened
-       * by a signal.
+      ret = nxsem_wait(&priv->rxsem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
        */
 
-      ASSERT(errno == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR || priv->rxresult == 0);
 }
 #endif
 
@@ -732,18 +737,23 @@ static void spi_dmarxwait(FAR struct stm32_spidev_s *priv)
 #ifdef CONFIG_STM32F7_SPI_DMA
 static void spi_dmatxwait(FAR struct stm32_spidev_s *priv)
 {
+  int ret;
+
   /* Take the semaphore (perhaps waiting).  If the result is zero, then the DMA
    * must not really have completed???
    */
 
-  while (sem_wait(&priv->txsem) != 0 || priv->txresult == 0)
+  do
     {
-      /* The only case that an error should occur here is if the wait was awakened
-       * by a signal.
+      ret = nxsem_wait(&priv->txsem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
        */
 
-      ASSERT(errno == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR || priv->txresult == 0);
 }
 #endif
 
@@ -758,7 +768,7 @@ static void spi_dmatxwait(FAR struct stm32_spidev_s *priv)
 #ifdef CONFIG_STM32F7_SPI_DMA
 static inline void spi_dmarxwakeup(FAR struct stm32_spidev_s *priv)
 {
-  (void)sem_post(&priv->rxsem);
+  (void)nxsem_post(&priv->rxsem);
 }
 #endif
 
@@ -773,7 +783,7 @@ static inline void spi_dmarxwakeup(FAR struct stm32_spidev_s *priv)
 #ifdef CONFIG_STM32F7_SPI_DMA
 static inline void spi_dmatxwakeup(FAR struct stm32_spidev_s *priv)
 {
-  (void)sem_post(&priv->txsem);
+  (void)nxsem_post(&priv->txsem);
 }
 #endif
 
@@ -1025,26 +1035,31 @@ static void spi_modifycr2(FAR struct stm32_spidev_s *priv, uint16_t setbits,
 static int spi_lock(FAR struct spi_dev_s *dev, bool lock)
 {
   FAR struct stm32_spidev_s *priv = (FAR struct stm32_spidev_s *)dev;
+  int ret;
 
   if (lock)
     {
       /* Take the semaphore (perhaps waiting) */
 
-      while (sem_wait(&priv->exclsem) != 0)
+      do
         {
-          /* The only case that an error should occur here is if the wait was awakened
-           * by a signal.
+          ret = nxsem_wait(&priv->exclsem);
+
+          /* The only case that an error should occur here is if the wait
+           * was awakened by a signal.
            */
 
-          ASSERT(errno == EINTR);
+          DEBUGASSERT(ret == OK || ret == -EINTR);
         }
+      while (ret == -EINTR);
     }
   else
     {
-      (void)sem_post(&priv->exclsem);
+      (void)nxsem_post(&priv->exclsem);
+      ret = OK;
     }
 
-  return OK;
+  return ret;
 }
 
 /************************************************************************************
@@ -1175,6 +1190,9 @@ static void spi_setmode(FAR struct spi_dev_s *dev, enum spi_mode_e mode)
   FAR struct stm32_spidev_s *priv = (FAR struct stm32_spidev_s *)dev;
   uint16_t setbits;
   uint16_t clrbits;
+#ifdef CONFIG_STM32F7_SPI_DMA
+  uint16_t cr2bits;
+#endif
 
   spiinfo("mode=%d\n", mode);
 
@@ -1210,9 +1228,39 @@ static void spi_setmode(FAR struct spi_dev_s *dev, enum spi_mode_e mode)
           return;
         }
 
+      /* Disable SPI then change mode */
+
       spi_modifycr1(priv, 0, SPI_CR1_SPE);
       spi_modifycr1(priv, setbits, clrbits);
+
+#ifdef CONFIG_STM32F7_SPI_DMA
+      /* Enabling SPI causes a spurious received character indication
+       * which confuse the DMA controller so we disable DMA during that
+       * enabling; and flush the SPI RX FIFO before re-enabling DMA.
+       */
+
+      cr2bits = spi_getreg(priv, STM32_SPI_CR2_OFFSET);
+      spi_modifycr2(priv, 0, SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN);
+#endif
+
+      /* Re-enable SPI */
+
       spi_modifycr1(priv, SPI_CR1_SPE, 0);
+      while ((spi_getreg(priv, STM32_SPI_SR_OFFSET) & SPI_SR_FRLVL_MASK) != 0)
+        {
+          /* Flush SPI read FIFO */
+
+          spi_getreg(priv, STM32_SPI_DR_OFFSET);
+        }
+
+#ifdef CONFIG_STM32F7_SPI_DMA
+
+      /* Re-enable DMA (with SPI disabled) */
+
+      spi_modifycr1(priv, 0, SPI_CR1_SPE);
+      spi_modifycr2(priv, cr2bits & (SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN), 0);
+      spi_modifycr1(priv, SPI_CR1_SPE, 0);
+#endif
 
       /* Save the mode so that subsequent re-configurations will be faster */
 
@@ -1651,7 +1699,7 @@ static void spi_recvblock(FAR struct spi_dev_s *dev, FAR void *rxbuffer, size_t 
  * Description:
  *   Initialize the selected SPI bus in its default state (Master, 8-bit, mode 0, etc.)
  *
- * Input Parameter:
+ * Input Parameters:
  *   priv   - private SPI device structure
  *
  * Returned Value:
@@ -1696,7 +1744,7 @@ static void spi_bus_initialize(FAR struct stm32_spidev_s *priv)
 
   /* Initialize the SPI semaphore that enforces mutually exclusive access. */
 
-  sem_init(&priv->exclsem, 0, 1);
+  nxsem_init(&priv->exclsem, 0, 1);
 
 #ifdef CONFIG_STM32F7_SPI_DMA
   /* Initialize the SPI semaphores that is used to wait for DMA completion.
@@ -1704,11 +1752,11 @@ static void spi_bus_initialize(FAR struct stm32_spidev_s *priv)
    * priority inheritance enabled.
    */
 
-  sem_init(&priv->rxsem, 0, 0);
-  sem_init(&priv->txsem, 0, 0);
+  nxsem_init(&priv->rxsem, 0, 0);
+  nxsem_init(&priv->txsem, 0, 0);
 
-  sem_setprotocol(&priv->rxsem, SEM_PRIO_NONE);
-  sem_setprotocol(&priv->txsem, SEM_PRIO_NONE);
+  nxsem_setprotocol(&priv->rxsem, SEM_PRIO_NONE);
+  nxsem_setprotocol(&priv->txsem, SEM_PRIO_NONE);
 
   /* Get DMA channels.  NOTE: stm32_dmachannel() will always assign the DMA channel.
    * if the channel is not available, then stm32_dmachannel() will block and wait
@@ -1740,7 +1788,7 @@ static void spi_bus_initialize(FAR struct stm32_spidev_s *priv)
  * Description:
  *   Initialize the selected SPI bus
  *
- * Input Parameter:
+ * Input Parameters:
  *   Port number (for hardware that has mutiple SPI interfaces)
  *
  * Returned Value:

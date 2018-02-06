@@ -296,13 +296,12 @@ static inline void inet_udp_newdata(FAR struct net_driver_s *dev,
 #endif /* NET_UDP_HAVE_STACK */
 
 /****************************************************************************
- * Name: inet_tcp_readahead
+ * Name: inet_tcp_readahead and inet_udp_readahead
  *
  * Description:
- *   Copy the read data from the packet
+ *   Copy the read-ahead data from the packet
  *
  * Parameters:
- *   dev      The structure of the network driver that caused the interrupt
  *   pstate   recvfrom state structure
  *
  * Returned Value:
@@ -712,7 +711,7 @@ static uint16_t inet_tcp_eventhandler(FAR struct net_driver_s *dev,
                * actually read.
                */
 
-              sem_post(&pstate->ir_sem);
+              nxsem_post(&pstate->ir_sem);
             }
 
 #ifdef CONFIG_NET_SOCKOPTS
@@ -735,11 +734,22 @@ static uint16_t inet_tcp_eventhandler(FAR struct net_driver_s *dev,
 
       else if ((flags & TCP_DISCONN_EVENTS) != 0)
         {
-          ninfo("Lost connection\n");
+          FAR struct socket *psock = pstate->ir_sock;
 
-          /* Handle loss-of-connection event */
+          nwarn("WARNING: Lost connection\n");
 
-          tcp_lost_connection(pstate->ir_sock, pstate->ir_cb, flags);
+          /* We could get here recursively through the callback actions of
+           * tcp_lost_connection().  So don't repeat that action if we have
+           * already been disconnected.
+           */
+
+          DEBUGASSERT(psock != NULL);
+          if (_SS_ISCONNECTED(psock->s_flags))
+            {
+              /* Handle loss-of-connection event */
+
+              tcp_lost_connection(psock, pstate->ir_cb, flags);
+            }
 
           /* Check if the peer gracefully closed the connection. */
 
@@ -775,7 +785,7 @@ static uint16_t inet_tcp_eventhandler(FAR struct net_driver_s *dev,
 
           /* Wake up the waiting thread */
 
-          sem_post(&pstate->ir_sem);
+          nxsem_post(&pstate->ir_sem);
         }
 
 #ifdef CONFIG_NET_SOCKOPTS
@@ -814,7 +824,7 @@ static uint16_t inet_tcp_eventhandler(FAR struct net_driver_s *dev,
            * the point that the timeout occurred (no error).
            */
 
-          sem_post(&pstate->ir_sem);
+          nxsem_post(&pstate->ir_sem);
         }
 #endif /* CONFIG_NET_SOCKOPTS */
     }
@@ -956,7 +966,7 @@ static void inet_udp_terminate(FAR struct inet_recvfrom_s *pstate, int result)
    * actually read.
    */
 
-  sem_post(&pstate->ir_sem);
+  nxsem_post(&pstate->ir_sem);
 }
 #endif /* NET_UDP_HAVE_STACK */
 
@@ -1087,8 +1097,8 @@ static void inet_recvfrom_initialize(FAR struct socket *psock, FAR void *buf,
    * priority inheritance enabled.
    */
 
-  (void)sem_init(&pstate->ir_sem, 0, 0); /* Doesn't really fail */
-  (void)sem_setprotocol(&pstate->ir_sem, SEM_PRIO_NONE);
+  (void)nxsem_init(&pstate->ir_sem, 0, 0); /* Doesn't really fail */
+  (void)nxsem_setprotocol(&pstate->ir_sem, SEM_PRIO_NONE);
 
   pstate->ir_buflen    = len;
   pstate->ir_buffer    = buf;
@@ -1107,7 +1117,7 @@ static void inet_recvfrom_initialize(FAR struct socket *psock, FAR void *buf,
  * semaphore.
  */
 
-#define inet_recvfrom_uninitialize(s) sem_destroy(&(s)->ir_sem)
+#define inet_recvfrom_uninitialize(s) nxsem_destroy(&(s)->ir_sem)
 
 #endif /* NET_UDP_HAVE_STACK || NET_TCP_HAVE_STACK */
 
@@ -1490,7 +1500,7 @@ static ssize_t inet_tcp_recvfrom(FAR struct socket *psock, FAR void *buf, size_t
  *   modified on return to indicate the actual size of the address stored
  *   there.
  *
- * Parameters:
+ * Input Parameters:
  *   psock    A pointer to a NuttX-specific, internal socket structure
  *   buf      Buffer to receive data
  *   len      Length of buffer

@@ -96,7 +96,7 @@ struct ieee802154_sendto_s
  *   If the destination address is all zero in the MAC header buf, then it is
  *   broadcast on the 802.15.4 network.
  *
- * Input parameters:
+ * Input Parameters:
  *   addr    - The address to check
  *   addrlen - The length of the address in bytes
  *
@@ -125,7 +125,7 @@ static bool ieee802154_anyaddrnull(FAR const uint8_t *addr, uint8_t addrlen)
  *   If the destination address is all zero in the MAC header buf, then it is
  *   broadcast on the 802.15.4 network.
  *
- * Input parameters:
+ * Input Parameters:
  *   eaddr - The short address to check
  *
  * Returned Value:
@@ -145,7 +145,7 @@ static inline bool ieee802154_saddrnull(FAR const uint8_t *saddr)
  *   If the destination address is all zero in the MAC header buf, then it is
  *   broadcast on the 802.15.4 network.
  *
- * Input parameters:
+ * Input Parameters:
  *   eaddr - The extended address to check
  *
  * Returned Value:
@@ -385,7 +385,7 @@ static uint16_t ieee802154_sendto_eventhandler(FAR struct net_driver_s *dev,
 
       /* Wake up the waiting thread */
 
-      sem_post(&pstate->is_sem);
+      nxsem_post(&pstate->is_sem);
     }
 
   return flags;
@@ -400,7 +400,7 @@ errout:
 
   /* Wake up the waiting thread */
 
-  sem_post(&pstate->is_sem);
+  nxsem_post(&pstate->is_sem);
   return flags;
 }
 
@@ -427,8 +427,8 @@ errout:
  *
  * Returned Value:
  *   On success, returns the number of characters sent.  On  error,
- *   -1 is returned, and errno is set appropriately.  See sendto()
- *   for the complete list of return values.
+ *   a negated errno value is retruend.  See sendto() for the complete list
+ *   of return values.
  *
  ****************************************************************************/
 
@@ -440,15 +440,13 @@ ssize_t psock_ieee802154_sendto(FAR struct socket *psock, FAR const void *buf,
   FAR struct radio_driver_s *radio;
   FAR struct ieee802154_conn_s *conn;
   struct ieee802154_sendto_s state;
-  int errcode;
   int ret = OK;
 
   /* Verify that the sockfd corresponds to valid, allocated socket */
 
   if (psock == NULL || psock->s_crefs <= 0)
     {
-      errcode = EBADF;
-      goto errout;
+      return -EBADF;
     }
 
   conn = (FAR struct ieee802154_conn_s *)psock->s_conn;
@@ -460,8 +458,7 @@ ssize_t psock_ieee802154_sendto(FAR struct socket *psock, FAR const void *buf,
 
   if (tolen < sizeof(struct ieee802154_saddr_s))
     {
-      errcode = EDESTADDRREQ;
-      goto errout;
+      return -EDESTADDRREQ;
     }
 
   /* Get the device driver that will service this transfer */
@@ -469,8 +466,7 @@ ssize_t psock_ieee802154_sendto(FAR struct socket *psock, FAR const void *buf,
   radio = ieee802154_find_device(conn, &conn->laddr);
   if (radio == NULL)
     {
-      errcode = ENODEV;
-      goto errout;
+      return -ENODEV;
     }
 
   /* Set the socket state to sending */
@@ -491,8 +487,8 @@ ssize_t psock_ieee802154_sendto(FAR struct socket *psock, FAR const void *buf,
    * priority inheritance enabled.
    */
 
-  (void)sem_init(&state.is_sem, 0, 0); /* Doesn't really fail */
-  (void)sem_setprotocol(&state.is_sem, SEM_PRIO_NONE);
+  (void)nxsem_init(&state.is_sem, 0, 0); /* Doesn't really fail */
+  (void)nxsem_setprotocol(&state.is_sem, SEM_PRIO_NONE);
 
   state.is_sock   = psock;          /* Socket descriptor to use */
   state.is_buflen = len;            /* Number of bytes to send */
@@ -535,7 +531,7 @@ ssize_t psock_ieee802154_sendto(FAR struct socket *psock, FAR const void *buf,
         }
     }
 
-  sem_destroy(&state.is_sem);
+  nxsem_destroy(&state.is_sem);
   net_unlock();
 
   /* Set the socket state to idle */
@@ -548,8 +544,7 @@ ssize_t psock_ieee802154_sendto(FAR struct socket *psock, FAR const void *buf,
 
   if (state.is_sent < 0)
     {
-      errcode = state.is_sent;
-      goto errout;
+      return state.is_sent;
     }
 
   /* If net_lockedwait failed, then we were probably reawakened by a signal. In
@@ -558,17 +553,12 @@ ssize_t psock_ieee802154_sendto(FAR struct socket *psock, FAR const void *buf,
 
   if (ret < 0)
     {
-      errcode = -ret;
-      goto errout;
+      return ret;
     }
 
   /* Return the number of bytes actually sent */
 
   return state.is_sent;
-
-errout:
-  set_errno(errcode);
-  return ERROR;
 }
 
 #endif /* CONFIG_NET_IEEE802154 */

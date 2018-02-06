@@ -1,7 +1,8 @@
 /****************************************************************************
  * include/nuttx/compiler.h
  *
- *   Copyright (C) 2007-2009, 2012-2013, 2015-2017 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2009, 2012-2013, 2015-2017 Gregory Nutt. All rights
+ *     reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -55,7 +56,9 @@
 #  define CONFIG_CPP_HAVE_VARARGS 1 /* Supports variable argument macros */
 #  define CONFIG_CPP_HAVE_WARNING 1 /* Supports #warning */
 
-/* Intriniscs */
+/* Intriniscs.  GCC supports __func__ but provides __FUNCTION__ for backward
+ * compatibility with older versions of GCC.
+ */
 
 #  define CONFIG_HAVE_FUNCTIONNAME 1 /* Has __FUNCTION__ */
 #  define CONFIG_HAVE_FILENAME     1 /* Has __FILE__ */
@@ -103,7 +106,9 @@
 #  define weak_const_function
 # endif
 
-/* The noreturn attribute informs GCC that the function will not return. */
+/* The noreturn attribute informs GCC that the function will not return.
+ * C11 adds _Noreturn keyword (see stdnoreturn.h)
+ */
 
 #  define noreturn_function __attribute__ ((noreturn))
 
@@ -200,6 +205,7 @@
 #  define CONFIG_HAVE_FARPOINTER 1
 
 #elif defined(__mc68hc1x__)
+
 /* No I-space access qualifiers */
 
 #  define IOBJ
@@ -269,9 +275,18 @@
 
 #  define CONFIG_CAN_PASS_STRUCTS 1
 
+/* Indicate that a local variable is not used */
+
+#  define UNUSED(a) ((void)(a))
+
 /* SDCC-specific definitions ************************************************/
 
-#elif defined(SDCC)
+#elif defined(SDCC) || defined(__SDCC)
+
+/* No I-space access qualifiers */
+
+#  define IOBJ
+#  define IPTR
 
 /* Pre-processor */
 
@@ -282,6 +297,7 @@
 
 #  define CONFIG_HAVE_FUNCTIONNAME 1 /* Has __FUNCTION__ */
 #  define CONFIG_HAVE_FILENAME     1 /* Has __FILE__ */
+#  define __FUNCTION__ __func__      /* SDCC supports on __func__ */
 
 /* Pragmas
  *
@@ -304,6 +320,9 @@
 #  define restrict /* REVISIT */
 
 /* SDCC does not support the noreturn or packed attributes */
+/* Current SDCC supports noreturn via C11 _Noreturn keyword (see
+ * stdnoreturn.h).
+ */
 
 #  define noreturn_function
 #  define begin_packed_struct
@@ -325,9 +344,16 @@
 /* The reentrant attribute informs SDCC that the function
  * must be reentrant.  In this case, SDCC will store input
  * arguments on the stack to support reentrancy.
+ *
+ * SDCC functions are always reentrant (except for the mcs51,
+ * ds390, hc08 and s08 backends)
  */
 
 #  define reentrant_function __reentrant
+
+/* Indicate that a local variable is not used */
+
+#  define UNUSED(a) ((void)(a))
 
 /* It is assumed that the system is build using the small
  * data model with storage defaulting to internal RAM.
@@ -360,22 +386,24 @@
 
 #  define CONFIG_LONG_IS_NOT_INT 1
 
-/* The generic pointer and int are not the same size
- * (for some SDCC architectures)
+/* The generic pointer and int are not the same size (for some SDCC
+ * architectures).  REVISIT: SDCC now has more backends where pointers are
+ * the same size as int than just z80 and z180.
  */
 
 #if !defined(__z80) && !defined(__gbz80)
 #  define CONFIG_PTR_IS_NOT_INT 1
 #endif
 
-/* SDCC does not support inline functions */
+/* New versions of SDCC supports inline function */
 
-#  undef  CONFIG_HAVE_INLINE
-#  define inline
+#  define CONFIG_HAVE_INLINE 1
 
-/* SDCC does not support type long long or type double */
+/* SDCC does types long long and float, but not types double and long
+ * double.
+ */
 
-#  undef  CONFIG_HAVE_LONG_LONG
+#  define CONFIG_HAVE_LONG_LONG 1
 #  define CONFIG_HAVE_FLOAT 1
 #  undef  CONFIG_HAVE_DOUBLE
 #  undef  CONFIG_HAVE_LONG_DOUBLE
@@ -385,6 +413,10 @@
  */
 
 #  undef  CONFIG_CAN_PASS_STRUCTS
+
+/* Indicate that a local variable is not used */
+
+#  define UNUSED(a) ((void)(a))
 
 /* Zilog-specific definitions ***********************************************/
 
@@ -426,7 +458,9 @@
 #  define weak_const_function
 #  define restrict
 
-/* The Zilog compiler does not support the noreturn, packed, naked attributes */
+/* The Zilog compiler does not support the noreturn, packed, naked
+ * attributes.
+ */
 
 #  define noreturn_function
 #  define begin_packed_struct
@@ -505,6 +539,10 @@
 
 #  define CONFIG_CAN_PASS_STRUCTS 1
 
+/* Indicate that a local variable is not used */
+
+#  define UNUSED(a) ((void)(a))
+
 /* ICCARM-specific definitions ***********************************************/
 
 #elif defined(__ICCARM__)
@@ -533,6 +571,7 @@
 #  define NEAR
 #  define DSEG
 #  define CODE
+#  define IOBJ
 #  define IPTR
 
 #  define __asm__       asm
@@ -587,6 +626,8 @@
 #  undef  CONFIG_HAVE_DOUBLE
 #  undef  CONFIG_HAVE_LONG_DOUBLE
 #  undef  CONFIG_CAN_PASS_STRUCTS
+
+#  define UNUSED(a) ((void)(a))
 
 #endif
 

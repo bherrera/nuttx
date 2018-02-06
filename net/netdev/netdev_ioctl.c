@@ -38,7 +38,6 @@
  ****************************************************************************/
 
 #include <nuttx/config.h>
-#if defined(CONFIG_NET) && CONFIG_NSOCKET_DESCRIPTORS > 0
 
 #include <sys/socket.h>
 #include <sys/ioctl.h>
@@ -91,9 +90,25 @@
 #include "icmpv6/icmpv6.h"
 #include "route/route.h"
 
+#if defined(CONFIG_NET) && CONFIG_NSOCKET_DESCRIPTORS > 0
+
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
+/* Configuration */
+
+#undef HAVE_WRITABLE_IPv4ROUTE
+#undef HAVE_WRITABLE_IPv6ROUTE
+
+#ifdef CONFIG_NET_ROUTE
+#  if defined(CONFIG_NET_IPv4) && !defined(CONFIG_ROUTE_IPv4_ROMROUTE)
+#    define HAVE_WRITABLE_IPv4ROUTE 1
+#  endif
+
+#  if defined(CONFIG_NET_IPv6) && !defined(CONFIG_ROUTE_IPv6_ROMROUTE)
+#    define HAVE_WRITABLE_IPv6ROUTE 1
+#  endif
+#endif
 
 /* This is really kind of bogus.. When asked for an IP address, this is
  * family that is returned in the ifr structure.  Probably could just skip
@@ -121,7 +136,7 @@
  *
  ****************************************************************************/
 
-#if defined(CONFIG_NET_ROUTE) && defined(CONFIG_NET_IPv4)
+#ifdef HAVE_WRITABLE_IPv4ROUTE
 static int ioctl_add_ipv4route(FAR struct rtentry *rtentry)
 {
   FAR struct sockaddr_in *addr;
@@ -149,7 +164,7 @@ static int ioctl_add_ipv4route(FAR struct rtentry *rtentry)
 
   return net_addroute_ipv4(target, netmask, router);
 }
-#endif /* CONFIG_NET_ROUTE && CONFIG_NET_IPv4 */
+#endif /* HAVE_WRITABLE_IPv4ROUTE */
 
 /****************************************************************************
  * Name: ioctl_add_ipv6route
@@ -162,7 +177,7 @@ static int ioctl_add_ipv4route(FAR struct rtentry *rtentry)
  *
  ****************************************************************************/
 
-#if defined(CONFIG_NET_ROUTE) && defined(CONFIG_NET_IPv6)
+#ifdef HAVE_WRITABLE_IPv6ROUTE
 static int ioctl_add_ipv6route(FAR struct rtentry *rtentry)
 {
   FAR struct sockaddr_in6 *target;
@@ -187,7 +202,7 @@ static int ioctl_add_ipv6route(FAR struct rtentry *rtentry)
 
   return net_addroute_ipv6(target->sin6_addr.s6_addr16, netmask->sin6_addr.s6_addr16, router);
 }
-#endif /* CONFIG_NET_ROUTE && CONFIG_NET_IPv6 */
+#endif /* HAVE_WRITABLE_IPv6ROUTE */
 
 /****************************************************************************
  * Name: ioctl_del_ipv4route
@@ -200,7 +215,7 @@ static int ioctl_add_ipv6route(FAR struct rtentry *rtentry)
  *
  ****************************************************************************/
 
-#if defined(CONFIG_NET_ROUTE) && defined(CONFIG_NET_IPv4)
+#ifdef HAVE_WRITABLE_IPv4ROUTE
 static int ioctl_del_ipv4route(FAR struct rtentry *rtentry)
 {
   FAR struct sockaddr_in *addr;
@@ -215,7 +230,7 @@ static int ioctl_del_ipv4route(FAR struct rtentry *rtentry)
 
   return net_delroute_ipv4(target, netmask);
 }
-#endif /* CONFIG_NET_ROUTE && CONFIG_NET_IPv4 */
+#endif /* HAVE_WRITABLE_IPv4ROUTE */
 
 /****************************************************************************
  * Name: ioctl_del_ipv6route
@@ -228,7 +243,7 @@ static int ioctl_del_ipv4route(FAR struct rtentry *rtentry)
  *
  ****************************************************************************/
 
-#if defined(CONFIG_NET_ROUTE) && defined(CONFIG_NET_IPv6)
+#ifdef HAVE_WRITABLE_IPv6ROUTE
 static int ioctl_del_ipv6route(FAR struct rtentry *rtentry)
 {
   FAR struct sockaddr_in6 *target;
@@ -239,7 +254,7 @@ static int ioctl_del_ipv6route(FAR struct rtentry *rtentry)
 
   return net_delroute_ipv6(target->sin6_addr.s6_addr16, netmask->sin6_addr.s6_addr16);
 }
-#endif /* CONFIG_NET_ROUTE && CONFIG_NET_IPv6 */
+#endif /* HAVE_WRITABLE_IPv6ROUTE */
 
 /****************************************************************************
  * Name: ioctl_get_ipv4addr
@@ -261,6 +276,30 @@ static void ioctl_get_ipv4addr(FAR struct sockaddr *outaddr,
   dest->sin_family              = AF_INET;
   dest->sin_port                = 0;
   dest->sin_addr.s_addr         = inaddr;
+}
+#endif
+
+/****************************************************************************
+ * Name: ioctl_get_ipv4broadcast
+ *
+ * Description:
+ *   Return the sub-net broadcast address to user memory.
+ *
+ * Input Parameters:
+ *   outaddr - Pointer to the user-provided memory to receive the address.
+ *   inaddr  - The source IP address in the device structure.
+ *   netmask  - The netmask address mask in the device structure.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_NET_IPv4
+static void inline ioctl_get_ipv4broadcast(FAR struct sockaddr *outaddr,
+                                           in_addr_t inaddr, in_addr_t netmask)
+{
+  FAR struct sockaddr_in *dest  = (FAR struct sockaddr_in *)outaddr;
+  dest->sin_family              = AF_INET;
+  dest->sin_port                = 0;
+  dest->sin_addr.s_addr         = net_ipv4addr_broadcast(inaddr, netmask);
 }
 #endif
 
@@ -343,7 +382,7 @@ static void ioctl_set_ipv6addr(FAR net_ipv6addr_t outaddr,
  *   cmd      The ioctl command
  *   req      The argument of the ioctl cmd
  *
- * Return:
+ * Returned Value:
  *   >=0 on success (positive non-zero values are cmd-specific)
  *   Negated errno returned on failure.
  *
@@ -405,7 +444,7 @@ static int netdev_iee802154_ioctl(FAR struct socket *psock, int cmd,
  *   cmd      The ioctl command
  *   req      The argument of the ioctl cmd
  *
- * Return:
+ * Returned Value:
  *   >=0 on success (positive non-zero values are cmd-specific)
  *   Negated errno returned on failure.
  *
@@ -468,7 +507,7 @@ static int netdev_pktradio_ioctl(FAR struct socket *psock, int cmd,
  *   cmd      The ioctl command
  *   req      The argument of the ioctl cmd
  *
- * Return:
+ * Returned Value:
  *   >=0 on success (positive non-zero values are cmd-specific)
  *   Negated errno returned on failure.
  *
@@ -509,7 +548,7 @@ static int netdev_wifr_ioctl(FAR struct socket *psock, int cmd,
  * Parameters:
  *   req - The argument of the ioctl cmd
  *
- * Return:
+ * Returned Value:
  *  A pointer to the driver structure on success; NULL on failure.
  *
  ****************************************************************************/
@@ -539,7 +578,7 @@ static FAR struct net_driver_s *netdev_ifr_dev(FAR struct ifreq *req)
  *   cmd      The ioctl command
  *   req      The argument of the ioctl cmd
  *
- * Return:
+ * Returned Value:
  *   >=0 on success (positive non-zero values are cmd-specific)
  *   Negated errno returned on failure.
  *
@@ -612,6 +651,19 @@ static int netdev_ifr_ioctl(FAR struct socket *psock, int cmd,
 
 #ifdef CONFIG_NET_IPv4
       case SIOCGIFBRDADDR:  /* Get broadcast IP address */
+        {
+          dev = netdev_ifr_dev(req);
+          if (dev)
+            {
+              ioctl_get_ipv4broadcast(&req->ifr_broadaddr, dev->d_ipaddr,
+                                      dev->d_netmask);
+              ret = OK;
+            }
+        }
+        break;
+#endif
+
+#ifdef CONFIG_NET_IPv4
       case SIOCSIFBRDADDR:  /* Set broadcast IP address */
         {
           ret = -ENOSYS;
@@ -915,6 +967,22 @@ static int netdev_ifr_ioctl(FAR struct socket *psock, int cmd,
         }
         break;
 
+#ifdef CONFIG_NET_IPv4
+      case SIOCGIFCONF:  /* Return an interface list (IPv4) */
+        {
+          ret = netdev_ipv4_ifconf((FAR struct ifconf *)req);
+        }
+        break;
+#endif
+
+#ifdef CONFIG_NET_IPv6
+      case SIOCGLIFCONF:  /* Return an interface list (IPv6) */
+        {
+          ret = netdev_ipv6_ifconf((FAR struct lifconf *)req);
+        }
+        break;
+#endif
+
 #if defined(CONFIG_NETDEV_IOCTL) && defined(CONFIG_NETDEV_PHY_IOCTL)
 #ifdef CONFIG_ARCH_PHY_INTERRUPT
       case SIOCMIINOTIFY: /* Set up for PHY event notifications */
@@ -962,7 +1030,7 @@ static int netdev_ifr_ioctl(FAR struct socket *psock, int cmd,
  * Parameters:
  *   req - The argument of the ioctl cmd
  *
- * Return:
+ * Returned Value:
  *  A pointer to the driver structure on success; NULL on failure.
  *
  ****************************************************************************/
@@ -995,7 +1063,7 @@ static FAR struct net_driver_s *netdev_imsfdev(FAR struct ip_msfilter *imsf)
  *   cmd      The ioctl command
  *   imsf     The argument of the ioctl cmd
  *
- * Return:
+ * Returned Value:
  *   >=0 on success (positive non-zero values are cmd-specific)
  *   Negated errno returned on failure.
  *
@@ -1054,7 +1122,7 @@ static int netdev_imsf_ioctl(FAR struct socket *psock, int cmd,
  *   cmd    The ioctl command
  *   req    The argument of the ioctl cmd
  *
- * Return:
+ * Returned Value:
  *   >=0 on success (positive non-zero values are cmd-specific)
  *   Negated errno returned on failure.
  *
@@ -1177,7 +1245,7 @@ static int netdev_arp_ioctl(FAR struct socket *psock, int cmd,
  *   cmd      The ioctl command
  *   rtentry  The argument of the ioctl cmd
  *
- * Return:
+ * Returned Value:
  *   >=0 on success (positive non-zero values are cmd-specific)
  *   Negated errno returned on failure.
  *
@@ -1207,7 +1275,11 @@ static int netdev_rt_ioctl(FAR struct socket *psock, int cmd,
           if (rtentry->rt_target->ss_family == AF_INET)
 #endif
             {
+#ifdef HAVE_WRITABLE_IPv4ROUTE
               ret = ioctl_add_ipv4route(rtentry);
+#else
+              ret = -EACCES;
+#endif
             }
 #endif /* CONFIG_NET_IPv4 */
 
@@ -1216,7 +1288,11 @@ static int netdev_rt_ioctl(FAR struct socket *psock, int cmd,
           else
 #endif
             {
+#ifdef HAVE_WRITABLE_IPv6ROUTE
               ret = ioctl_add_ipv6route(rtentry);
+#else
+              ret = -EACCES;
+#endif
             }
 #endif /* CONFIG_NET_IPv6 */
         }
@@ -1236,7 +1312,11 @@ static int netdev_rt_ioctl(FAR struct socket *psock, int cmd,
           if (rtentry->rt_target->ss_family == AF_INET)
 #endif
             {
+#ifdef HAVE_WRITABLE_IPv4ROUTE
               ret = ioctl_del_ipv4route(rtentry);
+#else
+              ret = -EACCES;
+#endif
             }
 #endif /* CONFIG_NET_IPv4 */
 
@@ -1245,7 +1325,11 @@ static int netdev_rt_ioctl(FAR struct socket *psock, int cmd,
           else
 #endif
             {
+#ifdef HAVE_WRITABLE_IPv6ROUTE
               ret = ioctl_del_ipv6route(rtentry);
+#else
+              ret = -EACCES;
+#endif
             }
 #endif /* CONFIG_NET_IPv6 */
         }
@@ -1275,9 +1359,9 @@ static int netdev_rt_ioctl(FAR struct socket *psock, int cmd,
  *   cmd      The ioctl command
  *   arg      The argument of the ioctl cmd
  *
- * Return:
- *   >=0 on success (positive non-zero values are cmd-specific)
- *   On a failure, -1 is returned with errno set appropriately
+ * Returned Value:
+ *   A non-negative value is returned on success; a negated errno value is
+ *   returned on any failure to indicate the nature of the failure:
  *
  *   EBADF
  *     'psock' is not a valid, connected socket structure.
@@ -1303,8 +1387,7 @@ int psock_ioctl(FAR struct socket *psock, int cmd, unsigned long arg)
 
   if (psock == NULL || psock->s_crefs <= 0)
     {
-      ret = -EBADF;
-      goto errout;
+      return -EBADF;
     }
 
   /* Execute the command.  First check for a standard network IOCTL command. */
@@ -1372,18 +1455,7 @@ int psock_ioctl(FAR struct socket *psock, int cmd, unsigned long arg)
     }
 #endif
 
-  /* Check for success or failure */
-
-  if (ret >= 0)
-    {
-      return ret;
-    }
-
-/* On failure, set the errno and return -1 */
-
-errout:
-  set_errno(-ret);
-  return ERROR;
+  return ret;
 }
 
 /****************************************************************************
@@ -1397,9 +1469,9 @@ errout:
  *   cmd      The ioctl command
  *   arg      The argument of the ioctl cmd
  *
- * Return:
- *   >=0 on success (positive non-zero values are cmd-specific)
- *   On a failure, -1 is returned with errno set appropriately
+ * Returned Value:
+ *   A non-negative value is returned on success; a negated errno value is
+ *   returned on any failure to indicate the nature of the failure:
  *
  *   EBADF
  *     'sockfd' is not a valid socket descriptor.

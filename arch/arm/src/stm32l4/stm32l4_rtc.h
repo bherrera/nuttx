@@ -57,6 +57,22 @@
 #define STM32L4_RTC_PRESCALER_SECOND  32767  /* Default prescaler to get a second base */
 #define STM32L4_RTC_PRESCALER_MIN         1  /* Maximum speed of 16384 Hz */
 
+#if !defined(CONFIG_RTC_MAGIC)
+# define CONFIG_RTC_MAGIC (0xfacefeee)
+#endif
+
+#if !defined(CONFIG_RTC_MAGIC_TIME_SET)
+#  define CONFIG_RTC_MAGIC_TIME_SET (CONFIG_RTC_MAGIC + 1)
+#endif
+
+#if !defined(CONFIG_RTC_MAGIC_REG)
+# define CONFIG_RTC_MAGIC_REG (0)
+#endif
+
+#define RTC_MAGIC            CONFIG_RTC_MAGIC
+#define RTC_MAGIC_TIME_SET   CONFIG_RTC_MAGIC_TIME_SET
+#define RTC_MAGIC_REG        STM32L4_RTC_BKR(CONFIG_RTC_MAGIC_REG)
+
 /****************************************************************************
  * Public Types
  ****************************************************************************/
@@ -96,6 +112,10 @@ struct alm_rdalarm_s
 
 #endif /* CONFIG_RTC_ALARM */
 
+#ifdef CONFIG_RTC_PERIODIC
+typedef CODE int (*wakeupcb_t)(void);
+#endif
+
 /****************************************************************************
  * Public Data
  ****************************************************************************/
@@ -117,21 +137,19 @@ extern "C"
  * Name: stm32l4_rtc_is_initialized
  *
  * Description:
- *    Returns 'true' if the RTC has been initialized (according to the RTC itself).
- *    It will be 'false' if the RTC has never been initialized since first time power
+ *    Returns 'true' if the RTC has been initialized
+ *    Returns 'false' if the RTC has never been initialized since first time power
  *    up, and the counters are stopped until it is first initialized.
  *
  * Input Parameters:
  *   None
  *
  * Returned Value:
- *   bool -- true if the INITS flag is set in the ISR.
+ *   Returns true if RTC has been initialized.
  *
  ************************************************************************************/
 
-#ifdef CONFIG_RTC_DRIVER
 bool stm32l4_rtc_is_initialized(void);
-#endif
 
 /****************************************************************************
  * Name: stm32l4_rtc_getdatetime_with_subseconds
@@ -197,7 +215,7 @@ bool stm32l4_rtc_havesettime(void);
  * Name: stm32l4_rtc_setalarm
  *
  * Description:
- *   Set an alarm to an asbolute time using associated hardware.
+ *   Set an alarm to an absolute time using associated hardware.
  *
  * Input Parameters:
  *  alminfo - Information about the alarm configuration.
@@ -229,7 +247,7 @@ int stm32l4_rtc_rdalarm(FAR struct alm_rdalarm_s *alminfo);
  * Name: stm32l4_rtc_cancelalarm
  *
  * Description:
- *   Cancel an alaram.
+ *   Cancel an alarm.
  *
  * Input Parameters:
  *  alarmid - Identifies the alarm to be cancelled
@@ -241,6 +259,41 @@ int stm32l4_rtc_rdalarm(FAR struct alm_rdalarm_s *alminfo);
 
 int stm32l4_rtc_cancelalarm(enum alm_id_e alarmid);
 #endif /* CONFIG_RTC_ALARM */
+
+#ifdef CONFIG_RTC_PERIODIC
+
+/****************************************************************************
+ * Name: stm32l4_rtc_setperiodic
+ *
+ * Description:
+ *   Set a periodic RTC wakeup
+ *
+ * Input Parameters:
+ *  period   - Time to sleep between wakeups
+ *  callback - Function to call when the period expires.
+ *
+ * Returned Value:
+ *   Zero (OK) on success; a negated errno on failure
+ *
+ ****************************************************************************/
+
+int stm32l4_rtc_setperiodic(FAR const struct timespec *period, wakeupcb_t callback);
+
+/****************************************************************************
+ * Name: stm32l4_rtc_cancelperiodic
+ *
+ * Description:
+ *   Cancel a periodic wakeup
+ *
+ * Input Parameters:
+ *
+ * Returned Value:
+ *   Zero (OK) on success; a negated errno on failure
+ *
+ ****************************************************************************/
+
+int stm32l4_rtc_cancelperiodic(void);
+#endif /* CONFIG_RTC_PERIODIC */
 
 /****************************************************************************
  * Name: stm32l4_rtc_lowerhalf

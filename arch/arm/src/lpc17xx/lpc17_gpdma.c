@@ -1,7 +1,7 @@
 /****************************************************************************
  * arch/arm/src/lpc17xx/lpc17_gpdma.c
  *
- *   Copyright (C) 2010, 2014, 2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2010, 2014, 2016-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -272,10 +272,11 @@ static int gpdma_interrupt(int irq, FAR void *context, FAR void *arg)
  * Name: up_dmainitialize
  *
  * Description:
- *   Initialize the GPDMA subsystem.
+ *   Initialize the GPDMA subsystem.  Called from up_initialize() early in the
+ *   boot-up sequence.  Prototyped in up_internal.h.
  *
  * Returned Value:
- *   Zero on success; A negated errno value on failure.
+ *   None
  *
  ****************************************************************************/
 
@@ -305,7 +306,7 @@ void weak_function up_dmainitialize(void)
 
   /* Initialize the DMA state structure */
 
-  sem_init(&g_gpdma.exclsem, 0, 1);
+  nxsem_init(&g_gpdma.exclsem, 0, 1);
 
   for (i = 0; i < LPC17_NDMACH; i++)
     {
@@ -395,10 +396,10 @@ DMA_HANDLE lpc17_dmachannel(void)
 
   do
     {
-      ret = sem_wait(&g_gpdma.exclsem);
-      DEBUGASSERT(ret == 0 || errno == EINTR);
+      ret = nxsem_wait(&g_gpdma.exclsem);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
-  while (ret < 0);
+  while (ret == -EINTR);
 
   /* Find an available DMA channel */
 
@@ -416,7 +417,7 @@ DMA_HANDLE lpc17_dmachannel(void)
 
   /* Return what we found (or not) */
 
-  sem_post(&g_gpdma.exclsem);
+  nxsem_post(&g_gpdma.exclsem);
   return (DMA_HANDLE)dmach;
 }
 

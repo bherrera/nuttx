@@ -865,6 +865,10 @@ config STM32L4_LPTIM
 	bool
 	default n
 
+config STM32L4_SDMMC
+	bool
+	default n
+
 # These are the peripheral selections proper
 
 comment "AHB1 Peripherals"
@@ -1262,6 +1266,11 @@ config STM32L4_SDMMC1
 	bool "SDMMC1"
 	default n
 	select ARCH_HAVE_SDIO
+	select SCHED_WORKQUEUE
+	select STM32L4_SAI1PLL
+	select STM32L4_SDMMC
+	select ARCH_HAVE_SDIOWAIT_WRCOMPLETE
+	select SDIO_PREFLIGHT
 	depends on STM32L4_HAVE_SDMMC1
 
 config STM32L4_TIM1
@@ -1395,6 +1404,11 @@ config ARCH_BOARD_STM32L4_CUSTOM_CLOCKCONFIG
 	default n
 	---help---
 		Enables special, board-specific STM32 clock configuration.
+
+config STM32L4_HAVE_RTC_SUBSECONDS
+	bool
+	select ARCH_HAVE_RTC_SUBSECONDS
+	default y
 
 choice
 	prompt "RTC clock source"
@@ -3308,6 +3322,27 @@ config STM32L4_ADC3_DMA
 		DMA transfer, which is necessary if multiple channels are read
 		or if very high trigger frequencies are used.
 
+config STM32L4_ADC1_OUTPUT_DFSDM
+	bool "ADC1 output to DFSDM"
+	depends on STM32L4_ADC1 && STM32L4_DFSDM1 && STM32L4_STM32L496XX
+	default n
+	---help---
+		Route ADC1 output directly to DFSDM parallel inputs.
+
+config STM32L4_ADC2_OUTPUT_DFSDM
+	bool "ADC2 output to DFSDM"
+	depends on STM32L4_ADC2 && STM32L4_DFSDM1 && STM32L4_STM32L496XX
+	default n
+	---help---
+		Route ADC2 output directly to DFSDM parallel inputs.
+
+config STM32L4_ADC3_OUTPUT_DFSDM
+	bool "ADC3 output to DFSDM"
+	depends on STM32L4_ADC3 && STM32L4_DFSDM1 && STM32L4_STM32L496XX
+	default n
+	---help---
+		Route ADC3 output directly to DFSDM parallel inputs.
+
 endmenu
 
 menu "DAC Configuration"
@@ -3626,6 +3661,15 @@ config STM32L4_SERIALBRK_BSDCOMPAT
 		on because the SW starts the break and then the HW automatically clears
 		the break. This makes it is difficult to sent a long break.
 
+if PM
+config PM_SERIAL_ACTIVITY
+	int "PM serial activity"
+	default 10
+	---help---
+		PM activity reported to power management logic on every serial
+		interrupt.
+endif
+
 endmenu # U[S]ART Configuration
 
 menu "SPI Configuration"
@@ -3680,12 +3724,58 @@ config STM32L4_I2CTIMEOTICKS
 	default 500
 	depends on STM32L4_I2C && !STM32L4_I2C_DYNTIMEO
 
-config STM32L4_I2C_DUTY16_9
-	bool "Frequency with Tlow/Thigh = 16/9 "
-	default n
-	depends on STM32L4_I2C
-
 endmenu
+
+menu "SD/MMC Configuration"
+	depends on STM32L4_SDMMC
+
+config STM32L4_SDMMC_XFRDEBUG
+	bool "SDMMC transfer debug"
+	depends on DEBUG_FS_INFO
+	default n
+	---help---
+		Enable special debug instrumentation analyze SDMMC data transfers.
+		This logic is as non-invasive as possible:  It samples SDMMC
+		registers at key points in the data transfer and then dumps all of
+		the registers at the end of the transfer.  If DEBUG_DMA is also
+		enabled, then DMA register will be collected as well.  Requires also
+		DEBUG_FS and CONFIG_DEBUG_INFO.
+
+config STM32L4_SDMMC_DMA
+	bool "Support DMA data transfers"
+	default n
+	select SDIO_DMA
+	depends on STM32L4_DMA
+	---help---
+		Support DMA data transfers.
+
+menu "SDMMC1 Configuration"
+	depends on STM32L4_SDMMC1
+
+config STM32L4_SDMMC1_PRI
+	hex "SDMMC1 interrupt priority"
+	default 128
+	depends on ARCH_IRQPRIO && EXPERIMENTAL
+	---help---
+		Select SDMMC1 interrupt priority.  Default: 128.
+
+config STM32L4_SDMMC1_DMAPRIO
+	hex "SDMMC1 DMA priority"
+	default 0x00001000
+	---help---
+		Select SDMMC1 DMA prority.
+
+		Options are: 0x00000000 low, 0x00001000 medium,
+		0x00002000 high, 0x00003000 very high.  Default: medium.
+
+config SDMMC1_WIDTH_D1_ONLY
+	bool "Use D1 only on SDMMC1"
+	default n
+	---help---
+		Select 1-bit transfer mode.  Default: 4-bit transfer mode.
+
+endmenu # SDMMC1 Configuration
+endmenu # SD/MMC Configuration
 
 menu "CAN driver configuration"
 	depends on STM32L4_CAN1 || STM32L4_CAN2
@@ -3727,7 +3817,7 @@ config STM32L4_CAN_REGDEBUG
 endmenu
 
 menu "QEncoder Driver"
-	depends on QENCODER
+	depends on SENSORS_QENCODER
 	depends on STM32L4_TIM1 || STM32L4_TIM2 || STM32L4_TIM3 || STM32L4_TIM4 || STM32L4_TIM5 || STM32L4_TIM8
 
 config STM32L4_TIM1_QE

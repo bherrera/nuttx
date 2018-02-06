@@ -1,7 +1,8 @@
 /****************************************************************************
  * drivers/rwbuffer.c
  *
- *   Copyright (C) 2009, 2011, 2013-2014 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2009, 2011, 2013-2014, 2017 Gregory Nutt. All rights
+ *     reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -92,23 +93,28 @@
 
 static void rwb_semtake(sem_t *sem)
 {
-  /* Take the semaphore (perhaps waiting) */
+  int ret;
 
-  while (sem_wait(sem) != 0)
+  do
     {
-      /* The only case that an error should occur here is if
-       * the wait was awakened by a signal.
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(sem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
        */
 
-      ASSERT(get_errno() == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
  * Name: rwb_semgive
  ****************************************************************************/
 
-#define rwb_semgive(s) sem_post(s)
+#define rwb_semgive(s) nxsem_post(s)
 
 /****************************************************************************
  * Name: rwb_overlap
@@ -657,7 +663,7 @@ int rwb_initialize(FAR struct rwbuffer_s *rwb)
 
       /* Initialize the write buffer access semaphore */
 
-      sem_init(&rwb->wrsem, 0, 1);
+      nxsem_init(&rwb->wrsem, 0, 1);
 
       /* Initialize write buffer parameters */
 
@@ -688,7 +694,7 @@ int rwb_initialize(FAR struct rwbuffer_s *rwb)
 
       /* Initialize the read-ahead buffer access semaphore */
 
-      sem_init(&rwb->rhsem, 0, 1);
+      nxsem_init(&rwb->rhsem, 0, 1);
 
       /* Initialize read-ahead buffer parameters */
 
@@ -725,7 +731,7 @@ void rwb_uninitialize(FAR struct rwbuffer_s *rwb)
   if (rwb->wrmaxblocks > 0)
     {
       rwb_wrcanceltimeout(rwb);
-      sem_destroy(&rwb->wrsem);
+      nxsem_destroy(&rwb->wrsem);
       if (rwb->wrbuffer)
         {
           kmm_free(rwb->wrbuffer);
@@ -736,7 +742,7 @@ void rwb_uninitialize(FAR struct rwbuffer_s *rwb)
 #ifdef CONFIG_DRVR_READAHEAD
   if (rwb->rhmaxblocks > 0)
     {
-      sem_destroy(&rwb->rhsem);
+      nxsem_destroy(&rwb->rhsem);
       if (rwb->rhbuffer)
         {
           kmm_free(rwb->rhbuffer);

@@ -138,10 +138,21 @@ extern SINT_T sddep_write(void *src, void *dst, UI_32 size, SINT_T type,
 
 static void _sdc_semtake(FAR sem_t *sem)
 {
-  while (sem_wait(sem) != 0)
+  int ret;
+
+  do
     {
-      ASSERT(errno == EINTR);
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(sem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
+       */
+
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -150,7 +161,7 @@ static void _sdc_semtake(FAR sem_t *sem)
 
 static void _sdc_semgive(FAR sem_t *sem)
 {
-  sem_post(sem);
+  nxsem_post(sem);
 }
 
 /****************************************************************************
@@ -344,7 +355,9 @@ int lc823450_sdc_setclock(uint32_t ch, uint32_t limitclk, uint32_t sysclk)
 /****************************************************************************
  * Name: lc823450_sdc_refmediatype
  *
- * Return Values: 0(sd), 1(emmc)
+ * Returned Value:
+ *   0(sd), 1(emmc)
+ *
  ****************************************************************************/
 
 int lc823450_sdc_refmediatype(uint32_t ch)
@@ -644,7 +657,7 @@ int lc823450_sdc_locked(void)
 
   for (i = 0; i < 2; i++)
     {
-      (void)sem_getvalue(&_sdc_sem[i], &val);
+      (void)nxsem_getvalue(&_sdc_sem[i], &val);
       if (1 != val)
         {
           ret = 1;

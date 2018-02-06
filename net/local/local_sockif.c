@@ -298,7 +298,7 @@ static int local_bind(FAR struct socket *psock,
     {
       /* Bind a local TCP/IP stream or datagram socket  */
 
-#if defined(ONFIG_NET_TCP) || defined(CONFIG_NET_LOCAL_DGRAM)
+#if defined(CONFIG_NET_LOCAL_STREAM) || defined(CONFIG_NET_LOCAL_DGRAM)
 #ifdef CONFIG_NET_LOCAL_STREAM
       case SOCK_STREAM:
 #endif
@@ -318,7 +318,7 @@ static int local_bind(FAR struct socket *psock,
             }
         }
         break;
-#endif /* CONFIG_NET_LOCAL_STREAM || CONFIG_NET_LOCAL_DGRAM*/
+#endif /* CONFIG_NET_LOCAL_STREAM || CONFIG_NET_LOCAL_DGRAM */
 
       default:
         ret = -EBADF;
@@ -530,7 +530,7 @@ static int local_connect(FAR struct socket *psock,
 }
 
 /****************************************************************************
- * Name: pkt_accept
+ * Name: local_accept
  *
  * Description:
  *   The pkt_accept function is used with connection-based socket types
@@ -788,7 +788,7 @@ static int local_close(FAR struct socket *psock)
 
           return OK;
         }
-#endif /* CONFIG_NET_LOCAL_STREAM ||  CONFIG_NET_LOCAL_DGRAM*/
+#endif /* CONFIG_NET_LOCAL_STREAM || CONFIG_NET_LOCAL_DGRAM */
 
       default:
         return -EBADF;
@@ -797,19 +797,6 @@ static int local_close(FAR struct socket *psock)
 
 /****************************************************************************
  * Public Functions
- ****************************************************************************/
-
-/****************************************************************************
- * Name:
- *
- * Description:
- *
- * Parameters:
- *
- * Returned Value:
- *
- * Assumptions:
- *
  ****************************************************************************/
 
 #endif /* CONFIG_NET_LOCAL */

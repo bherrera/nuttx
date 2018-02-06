@@ -1,7 +1,7 @@
 /****************************************************************************
  * arch/arm/src/sama5/sam_ssc.c
  *
- *   Copyright (C) 2013-2014, 2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2013-2014, 2016-2017 Gregory Nutt. All rights reserved.
  *   Authors: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -545,10 +545,10 @@ static void     ssc_dump_queues(struct sam_transport_s *xpt,
 /* Semaphore helpers */
 
 static void     ssc_exclsem_take(struct sam_ssc_s *priv);
-#define         ssc_exclsem_give(priv) sem_post(&priv->exclsem)
+#define         ssc_exclsem_give(priv) nxsem_post(&priv->exclsem)
 
 static void     ssc_bufsem_take(struct sam_ssc_s *priv);
-#define         ssc_bufsem_give(priv) sem_post(&priv->bufsem)
+#define         ssc_bufsem_give(priv) nxsem_post(&priv->bufsem)
 
 /* Buffer container helpers */
 
@@ -898,10 +898,10 @@ static void ssc_exclsem_take(struct sam_ssc_s *priv)
 
   do
     {
-      ret = sem_wait(&priv->exclsem);
-      DEBUGASSERT(ret == 0 || errno == EINTR);
+      ret = nxsem_wait(&priv->exclsem);
+      DEBUGASSERT(ret == 0 || ret == -EINTR);
     }
-  while (ret < 0);
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -929,10 +929,10 @@ static void ssc_bufsem_take(struct sam_ssc_s *priv)
 
   do
     {
-      ret = sem_wait(&priv->bufsem);
-      DEBUGASSERT(ret == 0 || errno == EINTR);
+      ret = nxsem_wait(&priv->bufsem);
+      DEBUGASSERT(ret == 0 || ret == -EINTR);
     }
-  while (ret < 0);
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -1037,7 +1037,7 @@ static void ssc_buf_initialize(struct sam_ssc_s *priv)
   int i;
 
   priv->freelist = NULL;
-  sem_init(&priv->bufsem, 0, CONFIG_SAMA5_SSC_MAXINFLIGHT);
+  nxsem_init(&priv->bufsem, 0, CONFIG_SAMA5_SSC_MAXINFLIGHT);
 
   for (i = 0; i < CONFIG_SAMA5_SSC_MAXINFLIGHT; i++)
     {
@@ -2786,7 +2786,7 @@ static int ssc_tx_configure(struct sam_ssc_s *priv)
  *   Setup the MCK/2 divider based on the currently selected data width and
  *   the sample rate
  *
- * Input Parameter:
+ * Input Parameters:
  *   priv - I2C device structure (only the sample rate and data length is
  *          needed at this point).
  *
@@ -2843,7 +2843,7 @@ static uint32_t ssc_mck2divider(struct sam_ssc_s *priv)
  * Description:
  *   Enable and configure clocking to the SSC
  *
- * Input Parameter:
+ * Input Parameters:
  *   priv - Partially initialized I2C device structure (only the PID is
  *          needed at this point).
  *
@@ -3394,7 +3394,7 @@ static void ssc1_configure(struct sam_ssc_s *priv)
  * Description:
  *   Initialize the selected SSC port
  *
- * Input Parameter:
+ * Input Parameters:
  *   port - I2S "port" number (identifying the "logical" SSC port)
  *
  * Returned Value:
@@ -3430,7 +3430,7 @@ struct i2s_dev_s *sam_ssc_initialize(int port)
 
   /* Initialize the common parts for the SSC device structure  */
 
-  sem_init(&priv->exclsem, 0, 1);
+  nxsem_init(&priv->exclsem, 0, 1);
   priv->dev.ops = &g_sscops;
   priv->sscno   = port;
 
@@ -3502,7 +3502,7 @@ errout_with_clocking:
   ssc_dma_free(priv);
 
 errout_with_alloc:
-  sem_destroy(&priv->exclsem);
+  nxsem_destroy(&priv->exclsem);
   kmm_free(priv);
   return NULL;
 }

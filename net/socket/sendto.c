@@ -73,8 +73,8 @@
  *   tolen    The length of the address structure
  *
  * Returned Value:
- *   On success, returns the number of characters sent.  On  error,
- *   -1 is returned, and errno is set appropriately:
+ *   On success, returns the number of characters sent.  On a negated errno
+ *   value is returned.  One of:
  *
  *   EAGAIN or EWOULDBLOCK
  *     The socket is marked non-blocking and the requested operation
@@ -116,8 +116,6 @@
  *     In this case the process will also receive a SIGPIPE unless
  *     MSG_NOSIGNAL is set.
  *
- * Assumptions:
- *
  ****************************************************************************/
 
 ssize_t psock_sendto(FAR struct socket *psock, FAR const void *buf,
@@ -125,9 +123,15 @@ ssize_t psock_sendto(FAR struct socket *psock, FAR const void *buf,
                      socklen_t tolen)
 {
   ssize_t nsent;
-  int errcode;
 
-  DEBUGASSERT(psock != NULL && buf != NULL);
+  /* Verify that non-NULL pointers were passed */
+
+#ifdef CONFIG_DEBUG_FEATURES
+  if (buf == NULL)
+    {
+      return -EINVAL;
+    }
+#endif
 
   /* If to is NULL or tolen is zero, then this function is same as send (for
    * connected socket types)
@@ -140,8 +144,7 @@ ssize_t psock_sendto(FAR struct socket *psock, FAR const void *buf,
       return psock_send(psock, buf, len, flags);
 #else
       nerr("ERROR: No 'to' address\n");
-      errcode = EINVAL;
-      goto errout;
+      return -EINVAL;
 #endif
     }
 
@@ -150,8 +153,7 @@ ssize_t psock_sendto(FAR struct socket *psock, FAR const void *buf,
   if (psock == NULL || psock->s_crefs <= 0)
     {
       nerr("ERROR: Invalid socket\n");
-      errcode = EBADF;
-      goto errout;
+      return -EBADF;
     }
 
   /* Let the address family's sendto() method handle the operation */
@@ -164,15 +166,10 @@ ssize_t psock_sendto(FAR struct socket *psock, FAR const void *buf,
   if (nsent < 0)
     {
       nerr("ERROR:  Family-specific send failed: %ld\n", (long)nsent);
-      errcode = -nsent;
-      goto errout;
+      return nsent;
     }
 
   return nsent;
-
-errout:
-  set_errno(errcode);
-  return ERROR;
 }
 
 /****************************************************************************
@@ -193,8 +190,8 @@ errout:
  *   tolen    The length of the address structure
  *
  * Returned Value:
- *   On success, returns the number of characters sent.  On  error,
- *   -1 is returned, and errno is set appropriately:
+ *   On success, returns the number of characters sent.  On any failure, a
+ *   negated errno value is returned.  One of:
  *
  *   EAGAIN or EWOULDBLOCK
  *     The socket is marked non-blocking and the requested operation
@@ -236,8 +233,6 @@ errout:
  *     In this case the process will also receive a SIGPIPE unless
  *     MSG_NOSIGNAL is set.
  *
- * Assumptions:
- *
  ****************************************************************************/
 
 ssize_t sendto(int sockfd, FAR const void *buf, size_t len, int flags,
@@ -257,6 +252,12 @@ ssize_t sendto(int sockfd, FAR const void *buf, size_t len, int flags,
   /* And let psock_sendto do all of the work */
 
   ret = psock_sendto(psock, buf, len, flags, to, tolen);
+  if (ret < 0)
+    {
+      set_errno((int)-ret);
+      ret = ERROR;
+    }
+
   leave_cancellation_point();
   return ret;
 }

@@ -226,7 +226,9 @@ static void lc823450_adc_start(FAR struct lc823450_adc_inst_s *inst)
   uint8_t i;
   uint32_t div;
 
-#ifdef CONFIG_ADC_POLLED
+#ifndef CONFIG_ADC_POLLED
+  int ret;
+#else
   irqstate_t flags;
 
   flags = enter_critical_section();
@@ -261,10 +263,19 @@ static void lc823450_adc_start(FAR struct lc823450_adc_inst_s *inst)
   while ((getreg32(rADCSTS) & rADCSTS_fADCMPL) == 0)
     ;
 #else
-  while (sem_wait(&inst->sem_isr) != 0)
+  do
     {
-      ASSERT(errno == EINTR);
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&inst->sem_isr);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
+       */
+
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 #endif
 
 #ifdef CONFIG_ADC_POLLED
@@ -282,10 +293,21 @@ static void lc823450_adc_start(FAR struct lc823450_adc_inst_s *inst)
 
 static inline void lc823450_adc_sem_wait(FAR struct lc823450_adc_inst_s *inst)
 {
-  while (sem_wait(&inst->sem_excl) != 0)
+  int ret;
+
+  do
     {
-      ASSERT(errno == EINTR);
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&inst->sem_excl);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
+       */
+
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -298,7 +320,7 @@ static inline void lc823450_adc_sem_wait(FAR struct lc823450_adc_inst_s *inst)
 
 static inline void lc823450_adc_sem_post(FAR struct lc823450_adc_inst_s *inst)
 {
-  sem_post(&inst->sem_excl);
+  nxsem_post(&inst->sem_excl);
 }
 
 /****************************************************************************
@@ -315,7 +337,7 @@ static int lc823450_adc_isr(int irq, void *context, FAR void *arg)
   ainfo("interrupt\n");
 
   lc823450_adc_clearirq();
-  sem_post(&g_inst->sem_isr);
+  nxsem_post(&g_inst->sem_isr);
   return OK;
 }
 #endif
@@ -535,9 +557,9 @@ FAR struct adc_dev_s *lc823450_adcinitialize(void)
       inst->nchannels = CONFIG_ADC_NCHANNELS;
       inst->chanlist = lc823450_chanlist;
 
-      sem_init(&inst->sem_excl, 0, 1);
+      nxsem_init(&inst->sem_excl, 0, 1);
 #ifndef CONFIG_ADC_POLLED
-      sem_init(&inst->sem_isr, 0, 0);
+      nxsem_init(&inst->sem_isr, 0, 0);
 #endif
 
       lc823450_adc_sem_wait(inst);

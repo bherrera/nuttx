@@ -276,7 +276,7 @@ microSD Card Interface
     Device Drivers -> MMC/SD Driver Support
       CONFIG_MMCSD=y                        : Enable MMC/SD support
       CONFIG_MMSCD_NSLOTS=1                 : One slot per driver instance
-      CONFIG_MMCSD_HAVECARDDETECT=y         : Supports card-detect PIOs
+      CONFIG_MMCSD_HAVE_CARDDETECT=y         : Supports card-detect PIOs
       CONFIG_MMCSD_MMCSUPPORT=n             : Interferes with some SD cards
       CONFIG_MMCSD_SPI=n                    : No SPI-based MMC/SD support
       CONFIG_MMCSD_SDIO=y                   : SDIO-based MMC/SD support
@@ -383,7 +383,7 @@ ViewTool DP83848 Ethernet Module
       CONFIG_NET_UDP_CONNS=8
 
       CONFIG_NET_ICMP=y                      : ICMP support
-      CONFIG_NET_ICMP_PING=y
+      CONFIG_NET_ICMP_SOCKET=y
 
       CONFIG_NSH_DRIPADDR=0x0a000001         : Network identity
       CONFIG_NSH_IPADDR=0x0a000002
@@ -629,12 +629,6 @@ Configurations
 
     6. USB support is disabled by default.  See the section above entitled,
        "USB Interface"
-
-    STATUS.  The first time I build the configuration, I get some undefined
-    external references.  No idea why.  Simply cleaning the apps/ directory
-    and rebuilding fixes the problem:
-
-      make apps_clean all
 
   nsh:
 

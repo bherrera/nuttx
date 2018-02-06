@@ -40,16 +40,18 @@
  * Included Files
  ****************************************************************************/
 
-#include <errno.h>
 #include <nuttx/config.h>
-#include <nuttx/arch.h>
-#include <nuttx/irq.h>
-#include <nuttx/clock.h>
 
 #include <semaphore.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <errno.h>
+
+#include <nuttx/arch.h>
+#include <nuttx/irq.h>
+#include <nuttx/clock.h>
+#include <nuttx/signal.h>
 
 #include "up_arch.h"
 #include "lc823450_sddrv_type.h"
@@ -121,7 +123,7 @@ static int _get_ch_from_cfg(struct SdDrCfg_s *cfg)
 static void dma_callback(DMA_HANDLE hdma, void *arg, int result)
 {
   sem_t *waitsem = (sem_t *)arg;
-  sem_post(waitsem);
+  nxsem_post(waitsem);
 }
 #endif /* CONFIG_LC823450_SDC_DMA */
 
@@ -131,10 +133,21 @@ static void dma_callback(DMA_HANDLE hdma, void *arg, int result)
 
 static void _sddep_semtake(FAR sem_t *sem)
 {
-  while (sem_wait(sem) != 0)
+  int ret;
+
+  do
     {
-      ASSERT(errno == EINTR);
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(sem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
+       */
+
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -182,7 +195,7 @@ SINT_T sddep1_hw_init(struct SdDrCfg_s *cfg)
 
   /* wait 15ms */
 
-  usleep(15000);
+  nxsig_usleep(15000);
 
   irqstate_t flags = enter_critical_section();
 
@@ -275,7 +288,7 @@ void sddep_voltage_switch(struct SdDrCfg_s *cfg)
 
   lc823450_gpio_config(GPIO_PORT0 | GPIO_PIN6 |
                        GPIO_MODE_OUTPUT | GPIO_VALUE_ONE);
-  usleep(200 * 1000);
+  nxsig_usleep(200 * 1000);
 #endif
 }
 
@@ -289,9 +302,9 @@ SINT_T sddep_os_init(struct SdDrCfg_s *cfg)
 
 #ifdef CONFIG_LC823450_SDC_DMA
   _hrdma[ch] = lc823450_dmachannel(DMA_CHANNEL_VIRTUAL);
-  sem_init(&_sem_rwait[ch], 0, 0);
+  nxsem_init(&_sem_rwait[ch], 0, 0);
   _hwdma[ch] = lc823450_dmachannel(DMA_CHANNEL_VIRTUAL);
-  sem_init(&_sem_wwait[ch], 0, 0);
+  nxsem_init(&_sem_wwait[ch], 0, 0);
 #endif /* CONFIG_LC823450_SDC_DMA */
   return 0;
 }
@@ -334,7 +347,7 @@ SINT_T sddep_wait(UI_32 ms, struct SdDrCfg_s *cfg)
     }
   else
     {
-      usleep(ms * 1000);
+      nxsig_usleep(ms * 1000);
     }
 #endif
 

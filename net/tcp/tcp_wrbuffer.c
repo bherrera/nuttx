@@ -49,11 +49,11 @@
 #endif
 
 #include <queue.h>
-#include <semaphore.h>
 #include <string.h>
 #include <assert.h>
 #include <debug.h>
 
+#include <nuttx/semaphore.h>
 #include <nuttx/net/net.h>
 #include <nuttx/mm/iob.h>
 
@@ -114,7 +114,7 @@ void tcp_wrbuffer_initialize(void)
       sq_addfirst(&g_wrbuffer.buffers[i].wb_node, &g_wrbuffer.freebuffers);
     }
 
-  sem_init(&g_wrbuffer.sem, 0, CONFIG_NET_TCP_NWRBCHAINS);
+  nxsem_init(&g_wrbuffer.sem, 0, CONFIG_NET_TCP_NWRBCHAINS);
 }
 
 /****************************************************************************
@@ -125,7 +125,7 @@ void tcp_wrbuffer_initialize(void)
  *   the free list.  This function is called from TCP logic when a buffer
  *   of TCP data is about to sent
  *
- * Input parameters:
+ * Input Parameters:
  *   None
  *
  * Assumptions:
@@ -194,7 +194,7 @@ void tcp_wrbuffer_release(FAR struct tcp_wrbuffer_s *wrb)
   /* Then free the write buffer structure */
 
   sq_addlast(&wrb->wb_node, &g_wrbuffer.freebuffers);
-  sem_post(&g_wrbuffer.sem);
+  nxsem_post(&g_wrbuffer.sem);
 }
 
 /****************************************************************************
@@ -211,7 +211,7 @@ void tcp_wrbuffer_release(FAR struct tcp_wrbuffer_s *wrb)
 int tcp_wrbuffer_test(void)
 {
   int val = 0;
-  sem_getvalue(&g_wrbuffer.sem, &val);
+  nxsem_getvalue(&g_wrbuffer.sem, &val);
   return val > 0 ? OK : ERROR;
 }
 

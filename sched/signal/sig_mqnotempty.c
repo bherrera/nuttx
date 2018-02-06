@@ -1,7 +1,8 @@
 /****************************************************************************
  * sched/signal/sig_mqnotempty.c
  *
- *   Copyright (C) 2007-2009, 2013, 2015 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2009, 2013, 2015, 2017 Gregory Nutt. All rights
+ *     reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -45,6 +46,8 @@
 #include <errno.h>
 #include <debug.h>
 
+#include <nuttx/signal.h>
+
 #include "sched/sched.h"
 #include "signal/signal.h"
 
@@ -53,20 +56,21 @@
  ****************************************************************************/
 
 /****************************************************************************
- * Name: sig_mqnotempty
+ * Name: nxsig_mqnotempty
  *
  * Description:
- *   This function is equivalent to sigqueue(), but supports the messaging
- *   system's requirement to signal a task when a message queue becomes
- *   non-empty.  It is identical to sigqueue(), except that it sets the
- *   si_code field in the siginfo structure to SI_MESGQ rather than SI_QUEUE.
+ *   This function is equivalent to nxsig_queue(), but supports the
+ *   messaging system's requirement to signal a task when a message queue
+ *   becomes non-empty.  It is identical to nxsig_queue(), except that it
+ *   sets the si_code field in the siginfo structure to SI_MESGQ rather than
+ *   SI_QUEUE.
  *
  ****************************************************************************/
 
 #ifdef CONFIG_CAN_PASS_STRUCTS
-int sig_mqnotempty(int pid, int signo, union sigval value)
+int nxsig_mqnotempty(int pid, int signo, union sigval value)
 #else
-int sig_mqnotempty(int pid, int signo, void *sival_ptr)
+int nxsig_mqnotempty(int pid, int signo, void *sival_ptr)
 #endif
 {
 #ifdef CONFIG_SCHED_HAVE_PARENT
@@ -106,7 +110,7 @@ int sig_mqnotempty(int pid, int signo, void *sival_ptr)
   /* Process the receipt of the signal */
 
   sched_lock();
-  ret = sig_dispatch(pid, &info);
+  ret = nxsig_dispatch(pid, &info);
   sched_unlock();
 
   return ret;

@@ -7,6 +7,7 @@
  *            Diego Sanchez <dsanchez@nx-engineering.com>
  *            Paul Alexander Patience <paul-a.patience@polymtl.ca>
  *            David Sidrane <david_s5@nscdg.com>
+ *            Bob Feretich <bob.feretich@rafresearch.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -85,7 +86,8 @@
 
 /* This implementation is for the STM32 F7[4-7] only */
 
-#if defined(CONFIG_STM32F7_STM32F74XX) || defined(CONFIG_STM32F7_STM32F75XX) || \
+#if defined(CONFIG_STM32F7_STM32F72XX) || defined(CONFIG_STM32F7_STM32F73XX) || \
+    defined(CONFIG_STM32F7_STM32F74XX) || defined(CONFIG_STM32F7_STM32F75XX) || \
     defined(CONFIG_STM32F7_STM32F76XX) || defined(CONFIG_STM32F7_STM32F77XX)
 
 /****************************************************************************
@@ -566,7 +568,7 @@ static void tim_modifyreg(FAR struct stm32_dev_s *priv, int offset,
  * Description:
  *   Dump all timer registers.
  *
- * Input parameters:
+ * Input Parameters:
  *   priv - A reference to the ADC block status
  *
  * Returned Value:
@@ -1080,9 +1082,9 @@ static void adc_rccreset(FAR struct stm32_dev_s *priv, bool reset)
 /****************************************************************************
  * Name: adc_enable
  *
- * Description    : Enables or disables the specified ADC peripheral.
- *                  Also, starts a conversion when the ADC is not
- *                  triggered by timers
+ * Description:
+ *   Enables or disables the specified ADC peripheral.  Also, starts a
+ *   conversion when the ADC is not triggered by timers
  *
  * Input Parameters:
  *

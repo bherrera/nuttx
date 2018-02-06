@@ -45,6 +45,7 @@
 #include <errno.h>
 #include <debug.h>
 
+#include <nuttx/semaphore.h>
 #include <nuttx/nx/nxfonts.h>
 
 #include "nxcontext.h"
@@ -109,15 +110,15 @@ static void nxf_list_lock(void)
 
   /* Get exclusive access to the font cache */
 
-  while ((ret = sem_wait(&g_cachesem)) < 0)
+  while ((ret = _SEM_WAIT(&g_cachesem)) < 0)
     {
-      int errorcode = errno;
+      int errorcode = _SEM_ERRNO(ret);
       DEBUGASSERT(errorcode == EINTR || errorcode == ECANCELED);
       UNUSED(errorcode);
     }
 }
 
-#define nxf_list_unlock() (sem_post(&g_cachesem))
+#define nxf_list_unlock() (_SEM_POST(&g_cachesem))
 
 /****************************************************************************
  * Name: nxf_removecache
@@ -166,15 +167,15 @@ static void nxf_cache_lock(FAR struct nxfonts_fcache_s *priv)
 
   /* Get exclusive access to the font cache */
 
-  while ((ret = sem_wait(&priv->fsem)) < 0)
+  while ((ret = _SEM_WAIT(&priv->fsem)) < 0)
     {
-      int errorcode = errno;
+      int errorcode = _SEM_ERRNO(ret);
       DEBUGASSERT(errorcode == EINTR || errorcode == ECANCELED);
       UNUSED(errorcode);
     }
 }
 
-#define nxf_cache_unlock(p) (sem_post(&priv->fsem))
+#define nxf_cache_unlock(p) (_SEM_POST(&priv->fsem))
 
 /****************************************************************************
  * Name: nxf_removeglyph
@@ -352,10 +353,13 @@ static inline void nxf_fillglyph(FAR struct nxfonts_fcache_s *priv,
   int row;
   int col;
 
+  UNUSED(row); /* Not used in all configurations */
+  UNUSED(col);
+
   /* Initialize the glyph memory to the background color. */
 
-#if !defined(CONFIG_NX_DISABLE_1BPP) || !defined(CONFIG_NX_DISABLE_2BPP) || \
-    !defined(CONFIG_NX_DISABLE_4BPP) || !defined(CONFIG_NX_DISABLE_8BPP)
+#if !defined(CONFIG_NXFONTS_DISABLE_1BPP) || !defined(CONFIG_NXFONTS_DISABLE_2BPP) || \
+    !defined(CONFIG_NXFONTS_DISABLE_4BPP) || !defined(CONFIG_NXFONTS_DISABLE_8BPP)
 
   /* For pixel depths of 1, 2, 4, and 8, build up an 8-bit value containing
    * multiple background colored pixels.
@@ -366,7 +370,7 @@ static inline void nxf_fillglyph(FAR struct nxfonts_fcache_s *priv,
       uint8_t pixel = (uint8_t)priv->bgcolor;
       FAR uint8_t *ptr;
 
-#ifndef CONFIG_NX_DISABLE_1BPP
+#ifndef CONFIG_NXFONTS_DISABLE_1BPP
       /* Pack a 1-bit pixel to 2 pixels */
 
       if (priv->bpp < 2)
@@ -378,7 +382,7 @@ static inline void nxf_fillglyph(FAR struct nxfonts_fcache_s *priv,
         }
 #endif
 
-#if !defined(CONFIG_NX_DISABLE_1BPP) || !defined(CONFIG_NX_DISABLE_2BPP)
+#if !defined(CONFIG_NXFONTS_DISABLE_1BPP) || !defined(CONFIG_NXFONTS_DISABLE_2BPP)
       /* Pack a 2-bit pixel to a 4-bit nibble */
 
       if (priv->bpp < 4)
@@ -390,8 +394,8 @@ static inline void nxf_fillglyph(FAR struct nxfonts_fcache_s *priv,
         }
 #endif
 
-#if !defined(CONFIG_NX_DISABLE_1BPP) || !defined(CONFIG_NX_DISABLE_2BPP) || \
-    !defined(CONFIG_NX_DISABLE_4BPP)
+#if !defined(CONFIG_NXFONTS_DISABLE_1BPP) || !defined(CONFIG_NXFONTS_DISABLE_2BPP) || \
+    !defined(CONFIG_NXFONTS_DISABLE_4BPP)
       /* Pack the 4-bit nibble into a byte */
 
       if (priv->bpp < 8)
@@ -417,7 +421,7 @@ static inline void nxf_fillglyph(FAR struct nxfonts_fcache_s *priv,
   else
 #endif
 
-#if !defined(CONFIG_NX_DISABLE_16BPP)
+#if !defined(CONFIG_NXFONTS_DISABLE_16BPP)
   if (priv->bpp == 16)
     {
       FAR uint16_t *ptr = (FAR uint16_t *)glyph->bitmap;
@@ -435,7 +439,7 @@ static inline void nxf_fillglyph(FAR struct nxfonts_fcache_s *priv,
   else
 #endif
 
-#ifndef CONFIG_NX_DISABLE_24BPP
+#ifndef CONFIG_NXFONTS_DISABLE_24BPP
   if (priv->bpp == 24)
     {
       FAR uint32_t *ptr = (FAR uint32_t *)glyph->bitmap;
@@ -445,7 +449,7 @@ static inline void nxf_fillglyph(FAR struct nxfonts_fcache_s *priv,
 
       pixel[0] = (uint32_t)priv->bgcolor <<  8 | (uint32_t)priv->bgcolor >> 16;
       pixel[1] = (uint32_t)priv->bgcolor << 16 | (uint32_t)priv->bgcolor >> 8;
-      pixel[1] = (uint32_t)priv->bgcolor << 24 | (uint32_t)priv->bgcolor;
+      pixel[2] = (uint32_t)priv->bgcolor << 24 | (uint32_t)priv->bgcolor;
 
       for (row = 0; row < glyph->height; row++)
         {
@@ -477,7 +481,7 @@ static inline void nxf_fillglyph(FAR struct nxfonts_fcache_s *priv,
   else
 #endif
 
-#if !defined(CONFIG_NX_DISABLE_32BPP)
+#if !defined(CONFIG_NXFONTS_DISABLE_32BPP)
   if (priv->bpp == 32)
     {
       FAR uint32_t *ptr = (FAR uint32_t *)glyph->bitmap;
@@ -635,7 +639,7 @@ nxf_findcache(enum nx_fontid_e fontid, nxgl_mxpixel_t fgcolor,
  *   bpp       - Bits per pixel
  *   maxglyphs - Maximum number of glyphs permitted in the cache
  *
- * Returned value:
+ * Returned Value:
  *   On success a non-NULL handle is returned that then may sequently be
  *   used with nxf_getglyph() to extract fonts from the font cache.  NULL
  *   returned on any failure with the errno value set to indicate the nature
@@ -695,37 +699,37 @@ FCACHE nxf_cache_connect(enum nx_fontid_e fontid,
 
       switch (bpp)
         {
-#ifndef CONFIG_NX_DISABLE_1BPP
+#ifndef CONFIG_NXFONTS_DISABLE_1BPP
         case 1:
           priv->renderer = (nxf_renderer_t)nxf_convert_1bpp;
           break;
 #endif
-#ifndef CONFIG_NX_DISABLE_2BPP
+#ifndef CONFIG_NXFONTS_DISABLE_2BPP
         case 2:
           priv->renderer = (nxf_renderer_t)nxf_convert_2bpp;
           break;
 #endif
-#ifndef CONFIG_NX_DISABLE_4BPP
+#ifndef CONFIG_NXFONTS_DISABLE_4BPP
         case 4:
           priv->renderer = (nxf_renderer_t)nxf_convert_4bpp;
           break;
 #endif
-#ifndef CONFIG_NX_DISABLE_8BPP
+#ifndef CONFIG_NXFONTS_DISABLE_8BPP
         case 8:
           priv->renderer = (nxf_renderer_t)nxf_convert_8bpp;
           break;
 #endif
-#ifndef CONFIG_NX_DISABLE_16BPP
+#ifndef CONFIG_NXFONTS_DISABLE_16BPP
         case 16:
           priv->renderer = (nxf_renderer_t)nxf_convert_16bpp;
           break;
 #endif
-#ifndef CONFIG_NX_DISABLE_24BPP
+#ifndef CONFIG_NXFONTS_DISABLE_24BPP
         case 24:
           priv->renderer = (nxf_renderer_t)nxf_convert_24bpp;
           break;
 #endif
-#ifndef CONFIG_NX_DISABLE_32BPP
+#ifndef CONFIG_NXFONTS_DISABLE_32BPP
         case 32:
           priv->renderer = (nxf_renderer_t)nxf_convert_32bpp;
           break;
@@ -748,7 +752,7 @@ FCACHE nxf_cache_connect(enum nx_fontid_e fontid,
 
       /* Initialize the mutual exclusion semaphore */
 
-      sem_init(&priv->fsem, 0, 1);
+      (void)nxsem_init(&priv->fsem, 0, 1);
 
       /* Add the new font cache to the list of font caches */
 
@@ -794,7 +798,7 @@ errout_with_lock:
  * Input Parameters:
  *   fhandle - A font cache handle previously returned by nxf_cache_connect();
  *
- * Returned value:
+ * Returned Value:
  *   None
  *
  ****************************************************************************/
@@ -845,7 +849,7 @@ void nxf_cache_disconnect(FCACHE fhandle)
 
       /* Destroy the serializing semaphore... while we are holding it? */
 
-      sem_destroy(&priv->fsem);
+      _SEM_DESTROY(&priv->fsem);
 
       /* Finally, free the font cache stucture itself */
 
@@ -872,7 +876,7 @@ void nxf_cache_disconnect(FCACHE fhandle)
  * Input Parameters:
  *   fhandle - A font cache handle previously returned by nxf_cache_connect();
  *
- * Returned value:
+ * Returned Value:
  *   Zero (OK) is returned if the metrics were
  *
  * Returned Value:

@@ -486,10 +486,21 @@ static struct spirit_pktstack_address_s g_addrinit =
 
 static void spirit_rxlock(FAR struct spirit_driver_s *priv)
 {
-  while (sem_wait(&priv->rxsem) < 0)
+  int ret;
+
+  do
     {
-      DEBUGASSERT(errno == EINTR);
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&priv->rxsem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
+       */
+
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -508,7 +519,7 @@ static void spirit_rxlock(FAR struct spirit_driver_s *priv)
 
 static inline void spirit_rxunlock(FAR struct spirit_driver_s *priv)
 {
-  sem_post(&priv->rxsem);
+  nxsem_post(&priv->rxsem);
 }
 
 /****************************************************************************
@@ -527,10 +538,21 @@ static inline void spirit_rxunlock(FAR struct spirit_driver_s *priv)
 
 static void spirit_txlock(FAR struct spirit_driver_s *priv)
 {
-  while (sem_wait(&priv->txsem) < 0)
+  int ret;
+
+  do
     {
-      DEBUGASSERT(errno == EINTR);
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&priv->txsem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
+       */
+
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -549,7 +571,7 @@ static void spirit_txlock(FAR struct spirit_driver_s *priv)
 
 static inline void spirit_txunlock(FAR struct spirit_driver_s *priv)
 {
-  sem_post(&priv->txsem);
+  nxsem_post(&priv->txsem);
 }
 
 /****************************************************************************
@@ -2240,7 +2262,7 @@ static int spirit_ioctl(FAR struct net_driver_s *dev, int cmd,
  * Description:
  *   Calculate the MAC header length given the frame meta-data.
  *
- * Input parameters:
+ * Input Parameters:
  *   netdev    - The network device that will mediate the MAC interface
  *   meta      - Obfuscated metadata structure needed to create the radio
  *               MAC header
@@ -2272,7 +2294,7 @@ static int spirit_get_mhrlen(FAR struct radio_driver_s *netdev,
  *   indirectly as a consequence of a TX poll that generates a series of
  *   6LoWPAN radio packets.
  *
- * Input parameters:
+ * Input Parameters:
  *   netdev    - The network device that will mediate the MAC interface
  *   meta      - Obfuscated metadata structure needed to create the radio
  *               MAC header
@@ -2385,7 +2407,7 @@ static int spirit_req_data(FAR struct radio_driver_s *netdev,
  *   run time.  This information is provided to the 6LoWPAN network via the
  *   following structure.
  *
- * Input parameters:
+ * Input Parameters:
  *   netdev     - The network device to be queried
  *   properties - Location where radio properities will be returned.
  *
@@ -2790,15 +2812,15 @@ int spirit_netdev_initialize(FAR struct spi_dev_s *spi,
 
   priv->lower = lower;
 
-  /* Create a watchdog for timing polling for and timing of transmisstions */
+  /* Create a watchdog for timing polling for and timing of transmissions */
 
   priv->txpoll        = wd_create();       /* Create periodic poll timer */
   priv->txtimeout     = wd_create();       /* Create TX timeout timer */
 
   DEBUGASSERT(priv->txpoll != NULL && priv->txtimeout != NULL);
 
-  sem_init(&priv->rxsem, 0, 1);            /* Access to RX packet queue */
-  sem_init(&priv->txsem, 0, 1);            /* Access to TX packet queue */
+  nxsem_init(&priv->rxsem, 0, 1);            /* Access to RX packet queue */
+  nxsem_init(&priv->txsem, 0, 1);            /* Access to TX packet queue */
 
   /* Initialize the IEEE 802.15.4 network device fields */
 

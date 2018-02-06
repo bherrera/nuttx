@@ -42,13 +42,13 @@
 
 #include <stdint.h>
 #include <string.h>
-#include <semaphore.h>
 #include <assert.h>
 #include <errno.h>
 #include <debug.h>
 
 #include <arch/irq.h>
 
+#include <nuttx/semaphore.h>
 #include <nuttx/net/netconfig.h>
 #include <nuttx/net/net.h>
 
@@ -60,7 +60,7 @@
 
 /* The array containing all usrsock connections. */
 
-struct usrsock_conn_s g_usrsock_connections[CONFIG_NET_USRSOCK_CONNS];
+static struct usrsock_conn_s g_usrsock_connections[CONFIG_NET_USRSOCK_CONNS];
 
 /* A list of all free usrsock connections */
 
@@ -101,7 +101,7 @@ static void _usrsock_semtake(FAR sem_t *sem)
 
 static void _usrsock_semgive(FAR sem_t *sem)
 {
-  (void)sem_post(sem);
+  (void)nxsem_post(sem);
 }
 
 /****************************************************************************
@@ -256,7 +256,7 @@ int usrsock_setup_request_callback(FAR struct usrsock_conn_s *conn,
 {
   int ret = -EBUSY;
 
-  (void)sem_init(&pstate->recvsem, 0, 0);
+  (void)nxsem_init(&pstate->recvsem, 0, 0);
   pstate->conn   = conn;
   pstate->result = -EAGAIN;
   pstate->completed = false;
@@ -324,7 +324,7 @@ void usrsock_initialize(void)
 
   dq_init(&g_free_usrsock_connections);
   dq_init(&g_active_usrsock_connections);
-  sem_init(&g_free_sem, 0, 1);
+  nxsem_init(&g_free_sem, 0, 1);
 
   for (i = 0; i < CONFIG_NET_USRSOCK_CONNS; i++)
     {

@@ -111,7 +111,11 @@ static uint16_t udp_poll_eventhandler(FAR struct net_driver_s *dev,
           eventset |= (POLLIN & info->fds->events);
         }
 
-      /*  poll is a sign that we are free to send data. */
+      /* A poll is a sign that we are free to send data.
+       * REVISIT: This is bogus:  If CONFIG_UDP_WRITE_BUFFERS=y then
+       * we never have to wait to send; otherwise, we always have to
+       * wait to send.  Receiving a poll is irrelevant.
+       */
 
       if ((flags & UDP_POLL) != 0)
         {
@@ -130,7 +134,7 @@ static uint16_t udp_poll_eventhandler(FAR struct net_driver_s *dev,
       if (eventset)
         {
           info->fds->revents |= eventset;
-          sem_post(info->fds->sem);
+          nxsem_post(info->fds->sem);
         }
     }
 
@@ -200,10 +204,10 @@ int udp_pollsetup(FAR struct socket *psock, FAR struct pollfd *fds)
       goto errout_with_lock;
     }
 
-  /* Allocate a TCP/IP callback structure */
+  /* Allocate a UDP callback structure */
 
   cb = udp_callback_alloc(info->dev, conn);
-  if (!cb)
+  if (cb == NULL)
     {
       ret = -EBUSY;
       goto errout_with_lock;
@@ -259,7 +263,7 @@ int udp_pollsetup(FAR struct socket *psock, FAR struct pollfd *fds)
   if (fds->revents != 0)
     {
       /* Yes.. then signal the poll logic */
-      sem_post(fds->sem);
+      nxsem_post(fds->sem);
     }
 
   net_unlock();
@@ -278,7 +282,7 @@ errout_with_lock:
  *   Teardown monitoring of events on an UDP/IP socket
  *
  * Input Parameters:
- *   psock - The TCP/IP socket of interest
+ *   psock - The UDP socket of interest
  *   fds   - The structure describing the events to be monitored, OR NULL if
  *           this is a request to stop monitoring events.
  *

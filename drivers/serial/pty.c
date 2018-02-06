@@ -1,7 +1,7 @@
 /****************************************************************************
  * drivers/serial/pty.c
  *
- *   Copyright (C) 2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2016-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -210,17 +210,28 @@ static const struct file_operations g_pty_fops =
 
 static void pty_semtake(FAR struct pty_devpair_s *devpair)
 {
-  while (sem_wait(&devpair->pp_exclsem) < 0)
+  int ret;
+
+  do
     {
-      DEBUGASSERT(errno == EINTR);
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&devpair->pp_exclsem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
+       */
+
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
  * Name: pty_semgive
  ****************************************************************************/
 
-#define pty_semgive(c) sem_post(&(c)->pp_exclsem)
+#define pty_semgive(c) nxsem_post(&(c)->pp_exclsem)
 
 /****************************************************************************
  * Name: pty_destroy
@@ -262,7 +273,7 @@ static void pty_destroy(FAR struct pty_devpair_s *devpair)
 
   /* And free the device structure */
 
-  sem_destroy(&devpair->pp_exclsem);
+  nxsem_destroy(&devpair->pp_exclsem);
   kmm_free(devpair);
 }
 #endif
@@ -301,7 +312,7 @@ static int pty_open(FAR struct file *filep)
         {
           /* Wait until unlocked.  We will also most certainly suspend here. */
 
-          sem_wait(&devpair->pp_slavesem);
+          (void)nxsem_wait(&devpair->pp_slavesem);
 
           /* Get exclusive access to the device structure.  This might also
            * cause suspension.
@@ -777,10 +788,10 @@ static int pty_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 
                do
                  {
-                   DEBUGVERIFY(sem_getvalue(&devpair->pp_slavesem, &sval));
+                   DEBUGVERIFY(nxsem_getvalue(&devpair->pp_slavesem, &sval));
                    if (sval < 0)
                      {
-                       sem_post(&devpair->pp_slavesem);
+                       nxsem_post(&devpair->pp_slavesem);
                      }
                  }
                while (sval < 0);
@@ -1019,14 +1030,14 @@ int pty_register(int minor)
 
   /* Initialize semaphores */
 
-  sem_init(&devpair->pp_slavesem, 0, 0);
-  sem_init(&devpair->pp_exclsem, 0, 1);
+  nxsem_init(&devpair->pp_slavesem, 0, 0);
+  nxsem_init(&devpair->pp_exclsem, 0, 1);
 
   /* The pp_slavesem semaphore is used for signaling and, hence, should not
    * have priority inheritance enabled.
    */
 
-  sem_setprotocol(&devpair->pp_slavesem, SEM_PRIO_NONE);
+  nxsem_setprotocol(&devpair->pp_slavesem, SEM_PRIO_NONE);
 
 #ifndef CONFIG_DISABLE_PSEUDOFS_OPERATIONS
   devpair->pp_minor             = minor;
@@ -1177,8 +1188,8 @@ errout_with_pipea:
     }
 
 errout_with_devpair:
-   sem_destroy(&devpair->pp_exclsem);
-   sem_destroy(&devpair->pp_slavesem);
+   nxsem_destroy(&devpair->pp_exclsem);
+   nxsem_destroy(&devpair->pp_slavesem);
    kmm_free(devpair);
    return ret;
 }

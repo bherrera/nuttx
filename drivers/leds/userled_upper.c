@@ -1,7 +1,7 @@
 /****************************************************************************
  * drivers/leds/userled_upper.c
  *
- *   Copyright (C) 2015-2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2015-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -100,7 +100,7 @@ struct userled_open_s
 /* Semaphore helpers */
 
 static inline int userled_takesem(sem_t *sem);
-#define userled_givesem(s) sem_post(s);
+#define userled_givesem(s) nxsem_post(s);
 
 /* Character driver methods */
 
@@ -141,18 +141,18 @@ static const struct file_operations userled_fops =
 
 static inline int userled_takesem(sem_t *sem)
 {
+  int ret;
+
   /* Take a count from the semaphore, possibly waiting */
 
-  if (sem_wait(sem) < 0)
-    {
-      /* EINTR is the only error that we expect */
+  ret = nxsem_wait(sem);
 
-      int errcode = get_errno();
-      DEBUGASSERT(errcode == EINTR);
-      return -errcode;
-    }
+  /* The only case that an error should occur here is if the wait
+   * was awakened by a signal
+   */
 
-  return OK;
+  DEBUGASSERT(ret == OK || ret == -EINTR);
+  return ret;
 }
 
 /****************************************************************************
@@ -527,7 +527,7 @@ static int userled_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
  *     minor device number.
  *   lower - An instance of the platform-specific LED lower half driver.
  *
- * Returned Values:
+ * Returned Value:
  *   Zero (OK) is returned on success.  Otherwise a negated errno value is
  *   returned to indicate the nature of the failure.
  *
@@ -555,7 +555,7 @@ int userled_register(FAR const char *devname,
   /* Initialize the new LED driver instance */
 
   priv->lu_lower = lower;
-  sem_init(&priv->lu_exclsem, 0, 1);
+  nxsem_init(&priv->lu_exclsem, 0, 1);
 
   DEBUGASSERT(lower && lower->ll_supported);
   priv->lu_supported = lower->ll_supported(lower);
@@ -576,7 +576,7 @@ int userled_register(FAR const char *devname,
   return OK;
 
 errout_with_priv:
-  sem_destroy(&priv->lu_exclsem);
+  nxsem_destroy(&priv->lu_exclsem);
   kmm_free(priv);
   return ret;
 }

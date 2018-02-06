@@ -75,7 +75,7 @@ static void _net_semtake(FAR struct socketlist *list)
   UNUSED(ret);
 }
 
-#define _net_semgive(list) sem_post(&list->sl_sem)
+#define _net_semgive(list) nxsem_post(&list->sl_sem)
 
 /****************************************************************************
  * Public Functions
@@ -99,7 +99,7 @@ void net_initlist(FAR struct socketlist *list)
 {
   /* Initialize the list access mutex */
 
-  (void)sem_init(&list->sl_sem, 0, 1);
+  (void)nxsem_init(&list->sl_sem, 0, 1);
 }
 
 /****************************************************************************
@@ -135,7 +135,7 @@ void net_releaselist(FAR struct socketlist *list)
 
   /* Destroy the semaphore */
 
-  (void)sem_destroy(&list->sl_sem);
+  (void)nxsem_destroy(&list->sl_sem);
 }
 
 /****************************************************************************
@@ -205,9 +205,7 @@ int sockfd_allocate(int minsd)
 
 void sock_release(FAR struct socket *psock)
 {
-#ifdef CONFIG_DEBUG_FEATURES
-  if (psock)
-#endif
+  if (psock != NULL)
     {
       /* Take the list semaphore so that there will be no accesses
        * to this socket structure.
@@ -221,7 +219,7 @@ void sock_release(FAR struct socket *psock)
            */
 
           _net_semtake(list);
-          if (psock && psock->s_crefs > 1)
+          if (psock->s_crefs > 1)
             {
               psock->s_crefs--;
             }

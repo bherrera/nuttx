@@ -1,7 +1,7 @@
 /****************************************************************************
  * drivers/mmcsd/mmcsd_sdio.c
  *
- *   Copyright (C) 2009-2013, 2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2009-2013, 2016-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -159,7 +159,7 @@ struct mmcsd_state_s
 static void    mmcsd_takesem(FAR struct mmcsd_state_s *priv);
 
 #ifndef CONFIG_SDIO_MUXBUS
-#  define mmcsd_givesem(p) sem_post(&priv->sem);
+#  define mmcsd_givesem(p) nxsem_post(&priv->sem);
 #endif
 
 /* Command/response helpers *************************************************/
@@ -279,18 +279,23 @@ static const struct block_operations g_bops =
 
 static void mmcsd_takesem(FAR struct mmcsd_state_s *priv)
 {
+  int ret;
+
   /* Take the semaphore, giving exclusive access to the driver (perhaps
    * waiting)
    */
 
-  while (sem_wait(&priv->sem) != 0)
+  do
     {
+      ret = nxsem_wait(&priv->sem);
+
       /* The only case that an error should occur here is if the wait was
        * awakened by a signal.
        */
 
-      ASSERT(errno == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 
   /* Lock the bus if mutually exclusive access to the SDIO bus is required
    * on this platform.
@@ -310,7 +315,7 @@ static void mmcsd_givesem(FAR struct mmcsd_state_s *priv)
    */
 
   SDIO_LOCK(priv->dev, FALSE);
-  sem_post(&priv->sem);
+  nxsem_post(&priv->sem);
 }
 #endif
 
@@ -1890,6 +1895,25 @@ static ssize_t mmcsd_writemultiple(FAR struct mmcsd_state_s *priv,
         }
     }
 
+  /* If Controller does not need DMA setup before the write then send CMD25
+   * now.
+   */
+
+  if ((priv->caps & SDIO_CAPS_DMABEFOREWRITE) == 0)
+    {
+      /* Send CMD25, WRITE_MULTIPLE_BLOCK, and verify that good R1 status
+       * is returned
+       */
+
+      mmcsd_sendcmdpoll(priv, MMCSD_CMD25, offset);
+      ret = mmcsd_recvR1(priv, MMCSD_CMD25);
+      if (ret != OK)
+        {
+          ferr("ERROR: mmcsd_recvR1 for CMD25 failed: %d\n", ret);
+          return ret;
+        }
+    }
+
   /* Configure SDIO controller hardware for the write transfer */
 
   SDIO_BLOCKSETUP(priv->dev, priv->blocksize, nblocks);
@@ -1918,24 +1942,30 @@ static ssize_t mmcsd_writemultiple(FAR struct mmcsd_state_s *priv,
 
   priv->wrbusy = true;
 
-  /* Send CMD25, WRITE_MULTIPLE_BLOCK, and verify that good R1 status
-   * is returned
-   */
+  /* If Controller needs DMA setup before write then only send CMD25 now. */
 
-  mmcsd_sendcmdpoll(priv, MMCSD_CMD25, offset);
-  ret = mmcsd_recvR1(priv, MMCSD_CMD25);
-  if (ret != OK)
+  if ((priv->caps & SDIO_CAPS_DMABEFOREWRITE) != 0)
     {
-      ferr("ERROR: mmcsd_recvR1 for CMD25 failed: %d\n", ret);
-      return ret;
+      /* Send CMD25, WRITE_MULTIPLE_BLOCK, and verify that good R1 status
+       * is returned
+       */
+
+      mmcsd_sendcmdpoll(priv, MMCSD_CMD25, offset);
+      ret = mmcsd_recvR1(priv, MMCSD_CMD25);
+      if (ret != OK)
+        {
+          ferr("ERROR: mmcsd_recvR1 for CMD25 failed: %d\n", ret);
+          return ret;
+        }
     }
 
   /* Wait for the transfer to complete */
 
-  ret = mmcsd_eventwait(priv, SDIOWAIT_TIMEOUT | SDIOWAIT_ERROR, nblocks * MMCSD_BLOCK_WDATADELAY);
+  ret = mmcsd_eventwait(priv, SDIOWAIT_TIMEOUT | SDIOWAIT_ERROR,
+                        nblocks * MMCSD_BLOCK_WDATADELAY);
   if (ret != OK)
     {
-      ferr("ERROR: CMD18 transfer failed: %d\n", ret);
+      ferr("ERROR: CMD25 transfer failed: %d\n", ret);
       return ret;
     }
 
@@ -3006,7 +3036,7 @@ static int mmcsd_probe(FAR struct mmcsd_state_s *priv)
    * else
    */
 
-#ifdef CONFIG_MMCSD_HAVECARDDETECT
+#ifdef CONFIG_MMCSD_HAVE_CARDDETECT
   if (priv->probed && SDIO_PRESENT(priv->dev))
     {
       return OK;
@@ -3033,7 +3063,7 @@ static int mmcsd_probe(FAR struct mmcsd_state_s *priv)
       if (ret != OK)
         {
           ferr("ERROR: Failed to initialize card: %d\n", ret);
-#ifdef CONFIG_MMCSD_HAVECARDDETECT
+#ifdef CONFIG_MMCSD_HAVE_CARDDETECT
           SDIO_CALLBACKENABLE(priv->dev, SDIOMEDIA_INSERTED);
 #endif
         }
@@ -3070,7 +3100,7 @@ static int mmcsd_probe(FAR struct mmcsd_state_s *priv)
               finfo("Capacity: %lu Kbytes\n", (unsigned long)(priv->capacity / 1024));
               priv->mediachanged = true;
 
-#ifdef CONFIG_MMCSD_HAVECARDDETECT
+#ifdef CONFIG_MMCSD_HAVE_CARDDETECT
               /* Set up to receive asynchronous, media removal events */
 
               SDIO_CALLBACKENABLE(priv->dev, SDIOMEDIA_EJECTED);
@@ -3091,7 +3121,7 @@ static int mmcsd_probe(FAR struct mmcsd_state_s *priv)
       /* There is no card in the slot */
 
       finfo("No card\n");
-#ifdef CONFIG_MMCSD_HAVECARDDETECT
+#ifdef CONFIG_MMCSD_HAVE_CARDDETECT
       SDIO_CALLBACKENABLE(priv->dev, SDIOMEDIA_INSERTED);
 #endif
       ret = -ENODEV;
@@ -3288,7 +3318,7 @@ int mmcsd_slotinitialize(int minor, FAR struct sdio_dev_s *dev)
       /* Initialize the MMC/SD state structure */
 
       memset(priv, 0, sizeof(struct mmcsd_state_s));
-      sem_init(&priv->sem, 0, 1);
+      nxsem_init(&priv->sem, 0, 1);
 
       /* Bind the MMCSD driver to the MMCSD state structure */
 

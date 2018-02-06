@@ -58,7 +58,7 @@
 
 #include <arch/board/board.h>
 
-#ifdef CONFIG_RTC
+#if defined(CONFIG_RTC) && !defined(CONFIG_RTC_EXTERNAL)
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -712,7 +712,7 @@ static int rtchw_check_alrbwf(void)
   uint32_t regval;
   int ret = -ETIMEDOUT;
 
-  /* Check RTC_ISR ALRAWF for access to alarm register,
+  /* Check RTC_ISR ALRBWF for access to alarm register,
    * can take 2 RTCCLK cycles or timeout
    * CubeMX use GetTick.
    */
@@ -770,8 +770,7 @@ static int rtchw_set_alrmar(rtc_alarmreg_t alarmreg)
   /* Set the RTC Alarm register */
 
   putreg32(alarmreg, STM32_RTC_ALRMAR);
-  rtcinfo("  TR: %08x ALRMAR: %08x\n",
-          getreg32(STM32_RTC_TR), getreg32(STM32_RTC_ALRMAR));
+  rtcinfo("  ALRMAR: %08x\n", getreg32(STM32_RTC_ALRMAR));
 
   /* Enable RTC alarm */
 
@@ -807,8 +806,7 @@ static int rtchw_set_alrmbr(rtc_alarmreg_t alarmreg)
   /* Set the RTC Alarm register */
 
   putreg32(alarmreg, STM32_RTC_ALRMBR);
-  rtcinfo("  TR: %08x ALRMBR: %08x\n",
-          getreg32(STM32_RTC_TR), getreg32(STM32_RTC_ALRMBR));
+  rtcinfo("  ALRMBR: %08x\n", getreg32(STM32_RTC_ALRMBR));
 
   /* Enable RTC alarm B */
 
@@ -860,7 +858,7 @@ static inline void rtc_enable_alarm(void)
 }
 #endif
 
-/************************************************************************************
+/****************************************************************************
  * Name: stm32_rtc_getalarmdatetime
  *
  * Description:
@@ -873,7 +871,7 @@ static inline void rtc_enable_alarm(void)
  * Returned Value:
  *   Zero (OK) on success; a negated errno on failure
  *
- ************************************************************************************/
+ ****************************************************************************/
 
 #ifdef CONFIG_RTC_ALARM
 static int stm32_rtc_getalarmdatetime(rtc_alarmreg_t reg, FAR struct tm *tp)
@@ -887,8 +885,7 @@ static int stm32_rtc_getalarmdatetime(rtc_alarmreg_t reg, FAR struct tm *tp)
   data = getreg32(reg);
 
   /* Convert the RTC time to fields in struct tm format.  All of the STM32
-   * All of the ranges of values correspond between struct tm and the time
-   * register.
+   * ranges of values correspond between struct tm and the time register.
    */
 
   tmp = (data & (RTC_ALRMR_SU_MASK | RTC_ALRMR_ST_MASK)) >> RTC_ALRMR_SU_SHIFT;
@@ -899,6 +896,9 @@ static int stm32_rtc_getalarmdatetime(rtc_alarmreg_t reg, FAR struct tm *tp)
 
   tmp = (data & (RTC_ALRMR_HU_MASK | RTC_ALRMR_HT_MASK)) >> RTC_ALRMR_HU_SHIFT;
   tp->tm_hour = rtc_bcd2bin(tmp);
+
+  tmp = (data & (RTC_ALRMR_DU_MASK | RTC_ALRMR_DT_MASK)) >> RTC_ALRMR_DU_SHIFT;
+  tp->tm_mday = rtc_bcd2bin(tmp);
 
   return OK;
 }
@@ -1168,7 +1168,10 @@ int up_rtc_getdatetime(FAR struct tm *tp)
 
   /* Sample the data time registers.  There is a race condition here... If
    * we sample the time just before midnight on December 31, the date could
-   * be wrong because the day rolled over while were sampling.
+   * be wrong because the day rolled over while were sampling. Thus loop for
+   * checking overflow here is needed.  There is a race condition with
+   * subseconds too. If we sample TR register just before second rolling
+   * and subseconds are read at wrong second, we get wrong time.
    */
 
   do
@@ -1177,16 +1180,24 @@ int up_rtc_getdatetime(FAR struct tm *tp)
       tr  = getreg32(STM32_RTC_TR);
 #ifdef CONFIG_STM32_HAVE_RTC_SUBSECONDS
       ssr = getreg32(STM32_RTC_SSR);
+      tmp = getreg32(STM32_RTC_TR);
+      if (tmp != tr)
+        {
+          continue;
+        }
 #endif
       tmp = getreg32(STM32_RTC_DR);
+      if (tmp == dr)
+        {
+          break;
+        }
     }
-  while (tmp != dr);
+  while (1);
 
   rtc_dumpregs("Reading Time");
 
   /* Convert the RTC time to fields in struct tm format.  All of the STM32
-   * All of the ranges of values correspond between struct tm and the time
-   * register.
+   * ranges of values correspond between struct tm and the time register.
    */
 
   tmp = (tr & (RTC_TR_SU_MASK | RTC_TR_ST_MASK)) >> RTC_TR_SU_SHIFT;
@@ -1221,7 +1232,7 @@ int up_rtc_getdatetime(FAR struct tm *tp)
   tmp = (dr & RTC_DR_WDU_MASK) >> RTC_DR_WDU_SHIFT;
   tp->tm_wday = tmp % 7;
   tp->tm_yday = tp->tm_mday + clock_daysbeforemonth(tp->tm_mon, clock_isleapyear(tp->tm_year + 1900));
-  tp->tm_isdst = 0
+  tp->tm_isdst = 0;
 #endif
 
 #ifdef CONFIG_STM32_HAVE_RTC_SUBSECONDS
@@ -1407,7 +1418,7 @@ int up_rtc_settime(FAR const struct timespec *tp)
  * Name: stm32_rtc_setalarm
  *
  * Description:
- *   Set an alarm to an asbolute time using associated hardware.
+ *   Set an alarm to an absolute time using associated hardware.
  *
  * Input Parameters:
  *  alminfo - Information about the alarm configuration.
@@ -1498,7 +1509,7 @@ int stm32_rtc_setalarm(FAR struct alm_setalarm_s *alminfo)
  * Name: stm32_rtc_cancelalarm
  *
  * Description:
- *   Cancel an alaram.
+ *   Cancel an alarm.
  *
  * Input Parameters:
  *  alarmid - Identifies the alarm to be cancelled
@@ -1629,6 +1640,7 @@ int stm32_rtc_rdalarm(FAR struct alm_rdalarm_s *alminfo)
         }
         break;
 
+#if CONFIG_RTC_NALARMS > 1
       case RTC_ALARMB:
         {
           alarmreg = STM32_RTC_ALRMBR;
@@ -1636,6 +1648,7 @@ int stm32_rtc_rdalarm(FAR struct alm_rdalarm_s *alminfo)
                                           (struct tm *)alminfo->ar_time);
         }
         break;
+#endif
 
       default:
         rtcerr("ERROR: Invalid ALARM%d\n", alminfo->ar_id);
@@ -1646,4 +1659,5 @@ int stm32_rtc_rdalarm(FAR struct alm_rdalarm_s *alminfo)
 }
 #endif
 
-#endif /* CONFIG_RTC */
+#endif /* CONFIG_RTC && !CONFIG_RTC_EXTERNAL */
+

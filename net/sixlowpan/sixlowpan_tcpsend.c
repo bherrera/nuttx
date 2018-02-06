@@ -178,7 +178,7 @@ static uint16_t sixlowpan_tcp_chksum(FAR const struct ipv6tcp_hdr_s *ipv6tcp,
  * Description:
  *   sixlowpan_tcp_header() will construct the IPv6 and TCP headers
  *
- * Input Parmeters
+ * Input Parameters:
  *   conn    - An instance of the TCP connection structure.
  *   dev     - The network device that will route the packet
  *   buf     - Data to send
@@ -328,7 +328,7 @@ static inline bool send_timeout(FAR struct sixlowpan_send_s *sinfo)
  *   This function is called from the interrupt level to perform the actual
  *   TCP send operation when polled by the lower, device interfacing layer.
  *
- * Input Parmeters
+ * Input Parameters:
  *   dev    - The structure of the network driver that caused the interrupt
  *   pvconn - The connection structure associated with the socket
  *   pvpriv - The interrupt handler's private data argument
@@ -439,11 +439,25 @@ static uint16_t tcp_send_eventhandler(FAR struct net_driver_s *dev,
 
   else if ((flags & TCP_DISCONN_EVENTS) != 0)
     {
-      ninfo("Lost connection\n");
+      FAR struct socket *psock = sinfo->s_sock;
 
-      /* Report the disconnection event to all socket clones */
+      nwarn("WARNING: Lost connection\n");
 
-      tcp_lost_connection(sinfo->s_sock, sinfo->s_cb, flags);
+      /* We could get here recursively through the callback actions of
+       * tcp_lost_connection().  So don't repeat that action if we have
+       * already been disconnected.
+       */
+
+      DEBUGASSERT(psock != NULL);
+      if (_SS_ISCONNECTED(psock->s_flags))
+         {
+           /* Report the disconnection event to all socket clones */
+
+           tcp_lost_connection(psock, sinfo->s_cb, flags);
+         }
+
+      /* Report not connected to the sender */
+
       sinfo->s_result = -ENOTCONN;
       goto end_wait;
     }
@@ -594,7 +608,7 @@ end_wait:
 
   /* Wake up the waiting thread */
 
-  sem_post(&sinfo->s_waitsem);
+  nxsem_post(&sinfo->s_waitsem);
   return flags;
 }
 
@@ -662,8 +676,8 @@ static int sixlowpan_send_packet(FAR struct socket *psock,
 
           /* Initialize the send state structure */
 
-          sem_init(&sinfo.s_waitsem, 0, 0);
-          (void)sem_setprotocol(&sinfo.s_waitsem, SEM_PRIO_NONE);
+          nxsem_init(&sinfo.s_waitsem, 0, 0);
+          (void)nxsem_setprotocol(&sinfo.s_waitsem, SEM_PRIO_NONE);
 
           sinfo.s_sock      = psock;
           sinfo.s_result    = -EBUSY;
@@ -714,7 +728,7 @@ static int sixlowpan_send_packet(FAR struct socket *psock,
         }
     }
 
-  sem_destroy(&sinfo.s_waitsem);
+  nxsem_destroy(&sinfo.s_waitsem);
   net_unlock();
 
   return (sinfo.s_result < 0 ? sinfo.s_result : len);
@@ -731,7 +745,7 @@ static int sixlowpan_send_packet(FAR struct socket *psock,
  *   psock_6lowpan_tcp_send() call may be used only when the TCP socket is in a
  *   connected state (so that the intended recipient is known).
  *
- * Input Parmeters
+ * Input Parameters:
  *   psock - An instance of the internal socket structure.
  *   buf   - Data to send
  *   bulen - Length of data to send
@@ -824,12 +838,10 @@ ssize_t psock_6lowpan_tcp_send(FAR struct socket *psock, FAR const void *buf,
     }
 #endif
 
-  /* Get the IEEE 802.15.4 MAC address of the destination.  This assumes
-   * an encoding of the MAC address in the IPv6 address.
-   */
+  /* Get the IEEE 802.15.4 MAC address of the next hop. */
 
-  ret = sixlowpan_destaddrfromip((FAR struct radio_driver_s *)dev,
-                                 conn->u.ipv6.raddr, &destmac);
+  ret = sixlowpan_nexthopaddr((FAR struct radio_driver_s *)dev,
+                              conn->u.ipv6.raddr, &destmac);
   if (ret < 0)
     {
       nerr("ERROR: Failed to get dest MAC address: %d\n", ret);
@@ -886,7 +898,7 @@ ssize_t psock_6lowpan_tcp_send(FAR struct socket *psock, FAR const void *buf,
  *   driver. Under those conditions, this function will be called to create
  *   the IEEE80215.4 frames.
  *
- * Input Parmeters
+ * Input Parameters:
  *   dev    - The network device containing the packet to be sent.
  *   fwddev - The network device used to send the data.  This will be the
  *            same device except for the IP forwarding case where packets
@@ -915,7 +927,7 @@ void sixlowpan_tcp_send(FAR struct net_driver_s *dev,
   sixlowpan_dumpbuffer("Outgoing TCP packet",
                        (FAR const uint8_t *)ipv6, dev->d_len);
 
-  if (dev != NULL && dev->d_len > 0)
+  if (dev != NULL && dev->d_len > 0 && fwddev != NULL)
     {
       FAR struct ipv6tcp_hdr_s *ipv6hdr;
 
@@ -943,12 +955,10 @@ void sixlowpan_tcp_send(FAR struct net_driver_s *dev,
           uint16_t buflen;
           int ret;
 
-          /* Get the IEEE 802.15.4 MAC address of the destination.  This
-           * assumes an encoding of the MAC address in the IPv6 address.
-           */
+          /* Get the IEEE 802.15.4 MAC address of the next hop. */
 
-          ret = sixlowpan_destaddrfromip((FAR struct radio_driver_s *)dev,
-                                         ipv6hdr->ipv6.destipaddr, &destmac);
+          ret = sixlowpan_nexthopaddr((FAR struct radio_driver_s *)fwddev,
+                                      ipv6hdr->ipv6.destipaddr, &destmac);
           if (ret < 0)
             {
               nerr("ERROR: Failed to get dest MAC address: %d\n", ret);

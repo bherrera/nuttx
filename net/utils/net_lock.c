@@ -47,6 +47,7 @@
 
 #include <nuttx/irq.h>
 #include <nuttx/arch.h>
+#include <nuttx/semaphore.h>
 #include <nuttx/net/net.h>
 
 #include "utils/utils.h"
@@ -80,14 +81,21 @@ static unsigned int g_count   = 0;
 
 static void _net_takesem(void)
 {
-  while (sem_wait(&g_netlock) != 0)
+  int ret;
+
+  do
     {
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&g_netlock);
+
       /* The only case that an error should occur here is if the wait was
        * awakened by a signal.
        */
 
-      DEBUGASSERT(get_errno() == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -104,7 +112,7 @@ static void _net_takesem(void)
 
 void net_lockinitialize(void)
 {
-  sem_init(&g_netlock, 0, 1);
+  nxsem_init(&g_netlock, 0, 1);
 }
 
 /****************************************************************************
@@ -116,7 +124,7 @@ void net_lockinitialize(void)
  * Input Parameters:
  *   None
  *
- * Returned value:
+ * Returned Value:
  *   None
  *
  ****************************************************************************/
@@ -155,7 +163,7 @@ void net_lock(void)
  * Input Parameters:
  *   None
  *
- * Returned value:
+ * Returned Value:
  *   None
  *
  ****************************************************************************/
@@ -172,7 +180,7 @@ void net_unlock(void)
 
       g_holder = NO_HOLDER;
       g_count  = 0;
-      sem_post(&g_netlock);
+      nxsem_post(&g_netlock);
     }
   else
     {
@@ -193,7 +201,7 @@ void net_unlock(void)
  *   sem     - A reference to the semaphore to be taken.
  *   abstime - The absolute time to wait until a timeout is declared.
  *
- * Returned value:
+ * Returned Value:
  *   Zero (OK) is returned on success; a negated errno value is returned on
  *   any failure.
  *
@@ -215,31 +223,21 @@ int net_timedwait(sem_t *sem, FAR const struct timespec *abstime)
       count    = g_count;
       g_holder = NO_HOLDER;
       g_count  = 0;
-      sem_post(&g_netlock);
+      nxsem_post(&g_netlock);
 
       /* Now take the semaphore, waiting if so requested. */
 
-      if (abstime)
+      if (abstime != NULL)
         {
           /* Wait until we get the lock or until the timeout expires */
 
-          ret = sem_timedwait(sem, abstime);
+          ret = nxsem_timedwait(sem, abstime);
         }
       else
         {
           /* Wait as long as necessary to get the lock */
 
-          ret = sem_wait(sem);
-        }
-
-      /* Check for errors from sem_wait() (should only be EINTR)
-       * REVISIT:  errno really should not be used within the OS
-       */
-
-      if (ret < 0)
-        {
-          ret = -get_errno();
-          DEBUGASSERT(ret < 0);
+          ret = nxsem_wait(sem);
         }
 
       /* Recover the network lock at the proper count */
@@ -250,19 +248,8 @@ int net_timedwait(sem_t *sem, FAR const struct timespec *abstime)
     }
   else
     {
-      ret = sem_wait(sem);
-
-      /* Check for errors from sem_wait() (should only be EINTR)
-       * REVISIT:  errno really should not be used within the OS
-       */
-
-      if (ret < 0)
-        {
-          ret = -get_errno();
-          DEBUGASSERT(ret < 0);
-        }
+      ret = nxsem_wait(sem);
     }
-
 
   sched_unlock();
   leave_critical_section(flags);
@@ -278,7 +265,7 @@ int net_timedwait(sem_t *sem, FAR const struct timespec *abstime)
  * Input Parameters:
  *   sem - A reference to the semaphore to be taken.
  *
- * Returned value:
+ * Returned Value:
  *   Zero (OK) is returned on success; a negated errno value is returned on
  *   any failure.
  *

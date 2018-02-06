@@ -209,7 +209,7 @@ Networking Support
     CONFIG_NET_UDP=y                    : Enable UDP networking
     CONFIG_NET_BROADCAST=y              : Needed for DNS name resolution
     CONFIG_NET_ICMP=y                   : Enable ICMP networking
-    CONFIG_NET_ICMP_PING=y              : Needed for NSH ping command
+    CONFIG_NET_ICMP_SOCKET=y            : Needed for NSH ping command
                                         : Defaults should be okay for other options
 f Application Configuration -> Network Utilities
     CONFIG_NETDB_DNSCLIENT=y               : Enable host address resolution
@@ -453,7 +453,7 @@ SD Card Support
       CONFIG_MMCSD=y                        : Enable MMC/SD support
       CONFIG_MMSCD_NSLOTS=1                 : One slot per driver instance
       CONFIG_MMCSD_MULTIBLOCK_DISABLE=y     : (REVISIT)
-      CONFIG_MMCSD_HAVECARDDETECT=y         : Supports card-detect PIOs
+      CONFIG_MMCSD_HAVE_CARDDETECT=y         : Supports card-detect PIOs
       CONFIG_MMCSD_MMCSUPPORT=n             : Interferes with some SD cards
       CONFIG_MMCSD_SPI=n                    : No SPI-based MMC/SD support
       CONFIG_MMCSD_SDIO=y                   : SDIO-based MMC/SD support
@@ -618,7 +618,7 @@ GNU Toolchain Options
 =====================
 
   The NuttX make system supports several GNU-based toolchains under Linux,
-  Cygwin under Windows, and Windoes native.  To select a toolchain:
+  Cygwin under Windows, and Windows native.  To select a toolchain:
 
   1. Use 'make menuconfig' and select the toolchain that you are using
      under the System Type menu.

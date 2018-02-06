@@ -52,6 +52,7 @@
 #include <nuttx/binfmt/elf.h>
 
 #include "stm32.h"
+#include "stm32_romfs.h"
 
 #ifdef CONFIG_STM32_OTGFS
 #  include "stm32_usbhost.h"
@@ -65,9 +66,13 @@
 #  include <nuttx/leds/userled.h>
 #endif
 
+#ifdef CONFIG_RNDIS
+#  include <nuttx/usb/rndis.h>
+#endif
+
 #include "stm32f4discovery.h"
 
-/* Conditional logic in stm32f4discover.h will determine if certain features
+/* Conditional logic in stm32f4discovery.h will determine if certain features
  * are supported.  Tests for these features need to be made after including
  * stm32f4discovery.h.
  */
@@ -125,6 +130,16 @@ int stm32_bringup(void)
   if (ret < 0)
     {
       serr("ERROR: stm32_pca9635_initialize failed: %d\n", ret);
+    }
+#endif
+
+#ifdef CONFIG_VIDEO_FB
+  /* Initialize and register the framebuffer driver */
+
+  ret = fb_register(0, 0);
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: fb_register() failed: %d\n", ret);
     }
 #endif
 
@@ -190,6 +205,16 @@ int stm32_bringup(void)
   if (ret < 0)
     {
       syslog(LOG_ERR, "ERROR: btn_lower_initialize() failed: %d\n", ret);
+    }
+#endif
+
+#ifdef CONFIG_INPUT_NUNCHUCK
+  /* Register the Nunchuck driver */
+
+  ret = nunchuck_initialize("/dev/nunchuck0");
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: nunchuck_initialize() failed: %d\n", ret);
     }
 #endif
 
@@ -287,6 +312,15 @@ int stm32_bringup(void)
     }
 #endif
 
+#ifdef CONFIG_STM32_ROMFS
+  ret = stm32_romfs_initialize();
+  if (ret < 0)
+    {
+      serr("ERROR: Failed to mount romfs at %s: %d\n",
+           STM32_ROMFS_MOUNTPOINT, ret);
+    }
+#endif
+
 #ifdef CONFIG_SENSORS_XEN1210
   ret = xen1210_archinitialize(0);
   if (ret < 0)
@@ -303,6 +337,17 @@ int stm32_bringup(void)
     {
       serr("ERROR: Failed to initialize LIS3DSH driver: %d\n", ret);
     }
+#endif
+
+#if defined(CONFIG_RNDIS) && defined(CONFIG_NSH_MACADDR)
+  uint8_t mac[6];
+  mac[0] = 0xaa; /* TODO */
+  mac[1] = (CONFIG_NSH_MACADDR >> (8 * 4)) & 0xff;
+  mac[2] = (CONFIG_NSH_MACADDR >> (8 * 3)) & 0xff;
+  mac[3] = (CONFIG_NSH_MACADDR >> (8 * 2)) & 0xff;
+  mac[4] = (CONFIG_NSH_MACADDR >> (8 * 1)) & 0xff;
+  mac[5] = (CONFIG_NSH_MACADDR >> (8 * 0)) & 0xff;
+  usbdev_rndis_initialize(mac);
 #endif
 
   return ret;

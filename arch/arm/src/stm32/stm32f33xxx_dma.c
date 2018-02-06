@@ -184,21 +184,26 @@ static inline void dmachan_putreg(struct stm32_dma_s *dmach, uint32_t offset, ui
 
 static void stm32_dmatake(FAR struct stm32_dma_s *dmach)
 {
-  /* Take the semaphore (perhaps waiting) */
+  int ret;
 
-  while (sem_wait(&dmach->sem) != 0)
+  do
     {
-      /* The only case that an error should occur here is if the wait was awakened
-       * by a signal.
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&dmach->sem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
        */
 
-      ASSERT(errno == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 static inline void stm32_dmagive(FAR struct stm32_dma_s *dmach)
 {
-  (void)sem_post(&dmach->sem);
+  (void)nxsem_post(&dmach->sem);
 }
 
 /************************************************************************************
@@ -296,7 +301,7 @@ void weak_function up_dmainitialize(void)
   for (chndx = 0; chndx < DMA_NCHANNELS; chndx++)
     {
       dmach = &g_dma[chndx];
-      sem_init(&dmach->sem, 0, 1);
+      nxsem_init(&dmach->sem, 0, 1);
 
       /* Attach DMA interrupt vectors */
 
@@ -338,7 +343,7 @@ void weak_function up_dmainitialize(void)
  *   Hmm.. I suppose this interface could be extended to make a non-blocking
  *   version.  Feel free to do that if that is what you need.
  *
- * Input parameter:
+ * Input Parameters:
  *   chndx - Identifies the stream/channel resource. For the STM32 F1, this
  *     is simply the channel number as provided by the DMACHAN_* definitions
  *     in chip/stm32f10xxx_dma.h.
@@ -569,7 +574,7 @@ size_t stm32_dmaresidual(DMA_HANDLE handle)
  *   of the processor. Note that this only applies to memory addresses, it
  *   will return false for any peripheral address.
  *
- * Returned value:
+ * Returned Value:
  *   True, if transfer is possible.
  *
  ****************************************************************************/
@@ -692,5 +697,35 @@ void stm32_dmadump(DMA_HANDLE handle, const struct stm32_dmaregs_s *regs,
   dmainfo("   CMAR[%08x]: %08x\n", dmach->base + STM32_DMACHAN_CMAR_OFFSET, regs->cmar);
 }
 #endif
+
+/****************************************************************************
+ * Name: stm32_dma_intack
+ *
+ * Description:
+ *   Public visible interface to acknowledge interrupts on DMA channel
+ *
+ ****************************************************************************/
+
+void stm32_dma_intack(unsigned int chndx, uint32_t isr)
+{
+  struct stm32_dma_s *dmach = &g_dma[chndx];
+
+  dmabase_putreg(dmach, STM32_DMA_IFCR_OFFSET, isr);
+}
+
+/****************************************************************************
+ * Name: stm32_dma_intget
+ *
+ * Description:
+ *   Public visible interface to get pending interrupts from DMA channel
+ *
+ ****************************************************************************/
+
+uint32_t stm32_dma_intget(unsigned int chndx)
+{
+  struct stm32_dma_s *dmach = &g_dma[chndx];
+
+  return dmabase_getreg(dmach, STM32_DMA_ISR_OFFSET) & DMA_ISR_CHAN_MASK(dmach->chan);
+}
 
 #endif /* CONFIG_STM32_DMA1 && CONFIG_STM32_STM32F33XX */

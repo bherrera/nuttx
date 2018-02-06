@@ -45,6 +45,7 @@
 #include <semaphore.h>
 #include <queue.h>
 
+#include <nuttx/semaphore.h>
 #include <nuttx/clock.h>
 #include <nuttx/wqueue.h>
 #include <nuttx/power/pm.h>
@@ -75,23 +76,23 @@
 /****************************************************************************
  * Name: pm_lock
  *
- * Descripton:
+ * Description:
  *   Lock the power management registry.  NOTE: This function may return
  *   an error if a signal is received while what (errno == EINTR).
  *
  ****************************************************************************/
 
-#define pm_lock() sem_wait(&g_pmglobals.regsem);
+#define pm_lock() nxsem_wait(&g_pmglobals.regsem);
 
 /****************************************************************************
  * Name: pm_unlock
  *
- * Descripton:
+ * Description:
  *   Unlock the power management registry.
  *
  ****************************************************************************/
 
-#define pm_unlock() sem_post(&g_pmglobals.regsem);
+#define pm_unlock() nxsem_post(&g_pmglobals.regsem);
 
 /****************************************************************************
  * Public Types

@@ -161,7 +161,7 @@ unsigned int net_timeval2dsec(FAR struct timeval *tv,
  * Parameters:
  *   mask   Points to an IPv6 netmask in the form of uint16_t[8]
  *
- * Return:
+ * Returned Value:
  *   The prefix length, range 0-128 on success;  This function will not
  *   fail.
  *
@@ -352,7 +352,7 @@ uint16_t udp_ipv6_chksum(FAR struct net_driver_s *dev);
  *
  ****************************************************************************/
 
-#if defined(CONFIG_NET_ICMP) && defined(CONFIG_NET_ICMP_PING)
+#if defined(CONFIG_NET_ICMP) && defined(CONFIG_NET_ICMP_SOCKET)
 uint16_t icmp_chksum(FAR struct net_driver_s *dev, int len);
 #endif
 
