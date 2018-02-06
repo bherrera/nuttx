@@ -6,7 +6,6 @@
  *   Authors: Gregory Nutt <gnutt@nuttx.org>
  *            Diego Sanchez <dsanchez@nx-engineering.com>
  *            Paul Alexander Patience <paul-a.patience@polymtl.ca>
- *            Mateusz Szafoni <raiden00@railab.me>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -81,9 +80,8 @@
 /* This implementation is for the STM32 F1, F2, F3, F4 and STM32L15XX only */
 
 #if defined(CONFIG_STM32_STM32F10XX) || defined(CONFIG_STM32_STM32F20XX) || \
-    defined(CONFIG_STM32_STM32F30XX) || defined(CONFIG_STM32_STM32F33XX) || \
-    defined(CONFIG_STM32_STM32F37XX) || defined(CONFIG_STM32_STM32F4XXX) || \
-    defined(CONFIG_STM32_STM32L15XX)
+    defined(CONFIG_STM32_STM32F30XX) || defined(CONFIG_STM32_STM32F37XX) || \
+    defined(CONFIG_STM32_STM32F4XXX) || defined(CONFIG_STM32_STM32L15XX)
 
 /* At the moment there is no proper implementation for timers external
  * trigger in STM32L15XX May be added latter
@@ -91,14 +89,6 @@
 
 #if defined(ADC_HAVE_TIMER) && defined(CONFIG_STM32_STM32L15XX)
 #  warning "There is no proper implementation for TIMER TRIGGERS at the moment"
-#endif
-
-/* At the moment there is no proper implementation for HRTIMER external
- * trigger in STM32F33XX
- */
-
-#if defined(ADC_HAVE_HRTIMER) && defined(CONFIG_STM32_STM32F33XX)
-#  warning "There is no proper implementation for HRTIMER TRIGGERS at the moment"
 #endif
 
 /****************************************************************************
@@ -118,10 +108,6 @@
 #  define RCC_RSTR_ADC2RST RCC_AHBRSTR_ADC12RST
 #  define RCC_RSTR_ADC3RST RCC_AHBRSTR_ADC34RST
 #  define RCC_RSTR_ADC4RST RCC_AHBRSTR_ADC34RST
-#elif defined(CONFIG_STM32_STM32F33XX)
-#  define STM32_RCC_RSTR   STM32_RCC_AHBRSTR
-#  define RCC_RSTR_ADC1RST RCC_AHBRSTR_ADC12RST
-#  define RCC_RSTR_ADC2RST RCC_AHBRSTR_ADC12RST
 #elif defined(CONFIG_STM32_STM32F37XX)
 #  define STM32_RCC_RSTR   STM32_RCC_APB2RSTR
 #  define RCC_RSTR_ADC1RST RCC_APB2RSTR_ADCRST
@@ -138,7 +124,7 @@
 
 /* ADC interrupts ***********************************************************/
 
-#if defined(CONFIG_STM32_STM32F30XX) || defined(CONFIG_STM32_STM32F33XX)
+#if defined(CONFIG_STM32_STM32F30XX)
 #  define STM32_ADC_DMAREG_OFFSET    STM32_ADC_CFGR_OFFSET
 #  define ADC_DMAREG_DMA             ADC_CFGR_DMAEN
 #  define STM32_ADC_EXTREG_OFFSET    STM32_ADC_CFGR_OFFSET
@@ -240,7 +226,7 @@
                                (ADC_SMPR_DEFAULT << ADC_SMPR2_SMP7_SHIFT) | \
                                (ADC_SMPR_DEFAULT << ADC_SMPR2_SMP8_SHIFT) | \
                                (ADC_SMPR_DEFAULT << ADC_SMPR2_SMP9_SHIFT))
-#elif defined(CONFIG_STM32_STM32F30XX) || defined(CONFIG_STM32_STM32F33XX)
+#elif defined(CONFIG_STM32_STM32F30XX)
 #  if defined(ADC_HAVE_DMA) || (ADC_MAX_SAMPLES == 1)
 #    define ADC_SMPR_DEFAULT    ADC_SMPR_61p5
 #  else /* Slow down sampling frequency */
@@ -352,8 +338,8 @@ struct stm32_dev_s
 /* ADC Register access */
 
 #if defined(CONFIG_STM32_STM32F20XX) || defined(CONFIG_STM32_STM32F30XX) || \
-    defined(CONFIG_STM32_STM32F33XX) || defined(CONFIG_STM32_STM32F37XX) || \
-    defined(CONFIG_STM32_STM32F4XXX) || defined(CONFIG_STM32_STM32L15XX)
+    defined(CONFIG_STM32_STM32F37XX) || defined(CONFIG_STM32_STM32F4XXX) || \
+    defined(CONFIG_STM32_STM32L15XX)
 static void stm32_modifyreg32(unsigned int addr, uint32_t clrbits,
                               uint32_t setbits);
 #endif
@@ -620,8 +606,8 @@ static struct adc_dev_s g_adcdev4 =
  ****************************************************************************/
 
 #if defined(CONFIG_STM32_STM32F20XX) || defined(CONFIG_STM32_STM32F30XX) || \
-    defined(CONFIG_STM32_STM32F33XX) || defined(CONFIG_STM32_STM32F37XX) || \
-    defined(CONFIG_STM32_STM32F4XXX) || defined(CONFIG_STM32_STM32L15XX)
+    defined(CONFIG_STM32_STM32F37XX) || defined(CONFIG_STM32_STM32F4XXX) || \
+    defined(CONFIG_STM32_STM32L15XX)
 static void stm32_modifyreg32(unsigned int addr, uint32_t clrbits,
                               uint32_t setbits)
 {
@@ -771,7 +757,7 @@ static void tim_modifyreg(FAR struct stm32_dev_s *priv, int offset,
  * Description:
  *   Dump all timer registers.
  *
- * Input parameters:
+ * Input Parameters:
  *   priv - A reference to the ADC block status
  *
  * Returned Value:
@@ -1256,7 +1242,7 @@ static void adc_startconv(FAR struct stm32_dev_s *priv, bool enable)
 
   adc_enable(priv, true);
 }
-#elif defined(CONFIG_STM32_STM32F30XX) || defined(CONFIG_STM32_STM32F33XX)
+#elif defined(CONFIG_STM32_STM32F30XX)
 static void adc_startconv(FAR struct stm32_dev_s *priv, bool enable)
 {
   uint32_t regval;
@@ -1380,7 +1366,8 @@ static void adc_rccreset(FAR struct stm32_dev_s *priv, bool reset)
 /****************************************************************************
  * Name: adc_power_down_idle
  *
- * Description    : Enables or disables power down during the idle phase.
+ * Description:
+ *   Enables or disables power down during the idle phase.
  *
  * Input Parameters:
  *
@@ -1421,7 +1408,8 @@ static void adc_power_down_idle(FAR struct stm32_dev_s *priv, bool pdi_high)
 /****************************************************************************
  * Name: adc_power_down_delay
  *
- * Description    : Enables or disables power down during the delay phase.
+ * Description:
+ *   Enables or disables power down during the delay phase.
  *
  * Input Parameters:
  *
@@ -1462,8 +1450,9 @@ static void adc_power_down_delay(FAR struct stm32_dev_s *priv, bool pdd_high)
 /****************************************************************************
  * Name: adc_dels_after_conversion
  *
- * Description    : Defines the length of the delay which is applied
- *                  after a conversion or a sequence of conversions.
+ * Description:
+ *   Defines the length of the delay which is applied after a conversion or
+ *   a sequence of conversions.
  *
  * Input Parameters:
  *
@@ -1488,7 +1477,8 @@ static void adc_dels_after_conversion(FAR struct stm32_dev_s *priv,
 /****************************************************************************
  * Name: adc_select_ch_bank
  *
- * Description    : Selects the bank of channels to be converted
+ * Description:
+ *   Selects the bank of channels to be converted
  *                  (! Must be modified only when no conversion is on going !)
  *
  * Input Parameters:
@@ -1521,9 +1511,9 @@ static void adc_select_ch_bank(FAR struct stm32_dev_s *priv,
 /****************************************************************************
  * Name: adc_enable
  *
- * Description    : Enables or disables the specified ADC peripheral.
- *                  Also, starts a conversion when the ADC is not
- *                  triggered by timers
+ * Description:
+ *   Enables or disables the specified ADC peripheral.  Also, starts a
+ *   conversion when the ADC is not triggered by timers
  *
  * Input Parameters:
  *
@@ -1534,7 +1524,7 @@ static void adc_select_ch_bank(FAR struct stm32_dev_s *priv,
  *
  ****************************************************************************/
 
-#if defined(CONFIG_STM32_STM32F30XX) || defined(CONFIG_STM32_STM32F33XX)
+#if defined(CONFIG_STM32_STM32F30XX)
 static void adc_enable(FAR struct stm32_dev_s *priv, bool enable)
 {
   uint32_t regval;
@@ -1765,7 +1755,7 @@ static void adc_reset(FAR struct adc_dev_s *dev)
 
 #endif
 
-#if defined(CONFIG_STM32_STM32F30XX) || defined(CONFIG_STM32_STM32F33XX)
+#if defined(CONFIG_STM32_STM32F30XX)
 
   /* Turn off the ADC so we can write the RCC bits */
 
@@ -1781,7 +1771,7 @@ static void adc_reset(FAR struct adc_dev_s *dev)
 
   adc_rccreset(priv, false);
 
-#if defined(CONFIG_STM32_STM32F30XX) || defined(CONFIG_STM32_STM32F33XX)
+#if defined(CONFIG_STM32_STM32F30XX)
 
   /* Set voltage regular enable to intermediate state */
 
@@ -1836,7 +1826,7 @@ static void adc_reset(FAR struct adc_dev_s *dev)
   adc_putreg(priv, STM32_ADC_SMPR2_OFFSET, ADC_SMPR2_DEFAULT);
 #endif
 
-#if defined(CONFIG_STM32_STM32F30XX) || defined(CONFIG_STM32_STM32F33XX)
+#if defined(CONFIG_STM32_STM32F30XX)
 
   /* Enable the analog watchdog */
 
@@ -1884,7 +1874,7 @@ static void adc_reset(FAR struct adc_dev_s *dev)
 
   adc_modifyreg(priv, STM32_ADC_IER_OFFSET, clrbits, setbits);
 
-#else /* CONFIG_STM32_STM32F30XX || CONFIG_STM32_STM33XX */
+#else /* CONFIG_STM32_STM32F30XX */
 
   /* Enable the analog watchdog */
 
@@ -1982,7 +1972,7 @@ static void adc_reset(FAR struct adc_dev_s *dev)
 
   /* ADC CCR configuration */
 
-#if defined(CONFIG_STM32_STM32F30XX) || defined(CONFIG_STM32_STM32F33XX)
+#if defined(CONFIG_STM32_STM32F30XX)
   clrbits = ADC_CCR_DUAL_MASK | ADC_CCR_DELAY_MASK | ADC_CCR_DMACFG |
             ADC_CCR_MDMA_MASK | ADC_CCR_CKMODE_MASK | ADC_CCR_VREFEN |
             ADC_CCR_TSEN | ADC_CCR_VBATEN;
@@ -1993,12 +1983,10 @@ static void adc_reset(FAR struct adc_dev_s *dev)
     {
       stm32_modifyreg32(STM32_ADC12_CCR, clrbits, setbits);
     }
-#ifndef CONFIG_STM32_STM32F33XX
   else
     {
       stm32_modifyreg32(STM32_ADC34_CCR, clrbits, setbits);
     }
-#endif
 #elif defined(CONFIG_STM32_STM32F20XX) || \
       defined(CONFIG_STM32_STM32F4XXX) || \
       defined(CONFIG_STM32_STM32L15XX)
@@ -2066,7 +2054,7 @@ static void adc_reset(FAR struct adc_dev_s *dev)
 
   leave_critical_section(flags);
 
-#if defined(CONFIG_STM32_STM32F30XX) || defined(CONFIG_STM32_STM32F33XX)
+#if defined(CONFIG_STM32_STM32F30XX)
   ainfo("ISR:  0x%08x CR:   0x%08x CFGR: 0x%08x\n",
         adc_getreg(priv, STM32_ADC_ISR_OFFSET),
         adc_getreg(priv, STM32_ADC_CR_OFFSET),
@@ -2083,7 +2071,7 @@ static void adc_reset(FAR struct adc_dev_s *dev)
         adc_getreg(priv, STM32_ADC_SQR2_OFFSET),
         adc_getreg(priv, STM32_ADC_SQR3_OFFSET));
 
-#if defined(CONFIG_STM32_STM32F30XX) || defined(CONFIG_STM32_STM32F33XX)
+#if defined(CONFIG_STM32_STM32F30XX)
   ainfo("SQR4: 0x%08x\n", adc_getreg(priv, STM32_ADC_SQR4_OFFSET));
 #elif defined(CONFIG_STM32_STM32L15XX)
   ainfo("SQR4: 0x%08x SQR5: 0x%08x\n",
@@ -2091,17 +2079,15 @@ static void adc_reset(FAR struct adc_dev_s *dev)
         adc_getreg(priv, STM32_ADC_SQR5_OFFSET));
 #endif
 
-#if defined(CONFIG_STM32_STM32F30XX) || defined(CONFIG_STM32_STM32F33XX)
+#if defined(CONFIG_STM32_STM32F30XX)
   if (priv->base == STM32_ADC1_BASE || priv->base == STM32_ADC2_BASE)
     {
       ainfo("CCR:  0x%08x\n", getreg32(STM32_ADC12_CCR));
     }
-#ifndef CONFIG_STM32_STM32F33XX
   else
     {
       ainfo("CCR:  0x%08x\n", getreg32(STM32_ADC34_CCR));
     }
-#endif
 #elif defined(CONFIG_STM32_STM32F20XX) || \
       defined(CONFIG_STM32_STM32F4XXX) || \
       defined(CONFIG_STM32_STM32L15XX)
@@ -2268,7 +2254,7 @@ static void adc_rxint(FAR struct adc_dev_s *dev, bool enable)
  *
  ****************************************************************************/
 
-#ifdef CONFIG_STM32_STM32L15XX
+#if defined(CONFIG_STM32_STM32L15XX) || defined(CONFIG_STM32_STM32F20XX)
 static void adc_ioc_enable_tvref_register(FAR struct adc_dev_s *dev,
                                           bool enable)
 {
@@ -2282,6 +2268,32 @@ static void adc_ioc_enable_tvref_register(FAR struct adc_dev_s *dev,
     }
 
   ainfo("STM32_ADC_CCR value: 0x%08x\n", getreg32(STM32_ADC_CCR));
+}
+
+#elif defined(CONFIG_STM32_STM32F10XX)
+static void adc_ioc_enable_tvref_register(FAR struct adc_dev_s *dev,
+                                          bool enable)
+{
+#if defined(CONFIG_STM32_ADC1)
+  FAR struct stm32_dev_s *priv = (FAR struct stm32_dev_s *)dev->ad_priv;
+
+  /* TSVREF bit is only available in the STM32_ADC1_CR2 register. */
+
+  if (priv->intf == 1)
+    {
+      if (enable)
+        {
+          adc_modifyreg(priv, STM32_ADC_CR2_OFFSET, 0, ADC_CR2_TSVREFE);
+        }
+      else
+        {
+          adc_modifyreg(priv, STM32_ADC_CR2_OFFSET, ADC_CR2_TSVREFE, 0);
+        }
+    }
+
+  ainfo("STM32_ADC_CR2 value: 0x%08x\n",
+        adc_getreg(priv, STM32_ADC_CR2_OFFSET));
+#endif /* CONFIG_STM32_ADC1 */
 }
 #endif
 
@@ -2679,7 +2691,17 @@ static int adc_ioctl(FAR struct adc_dev_s *dev, int cmd, unsigned long arg)
         adc_startconv(priv, true);
         break;
 
-#ifdef CONFIG_STM32_STM32L15XX
+#if defined(CONFIG_STM32_STM32F10XX)
+      case IO_ENABLE_TEMPER_VOLT_CH:
+        adc_ioc_enable_tvref_register(dev, *(bool *)arg);
+        break;
+
+#elif defined(CONFIG_STM32_STM32F20XX)
+      case IO_ENABLE_TEMPER_VOLT_CH:
+        adc_ioc_enable_tvref_register(dev, *(bool *)arg);
+        break;
+
+#elif defined(CONFIG_STM32_STM32L15XX)
       case IO_ENABLE_TEMPER_VOLT_CH:
         adc_ioc_enable_tvref_register(dev, *(bool *)arg);
         break;
@@ -2705,14 +2727,12 @@ static int adc_ioctl(FAR struct adc_dev_s *dev, int cmd, unsigned long arg)
           ret = adc_ioc_wait_rcnr_zeroed(priv);
           if (ret < 0)
             {
-              set_errno(-ret);
               return ret;
             }
 
           ret = adc_set_ch(dev, ch);
           if (ret < 0)
             {
-              set_errno(-ret);
               return ret;
             }
 
@@ -2828,10 +2848,10 @@ static int adc_interrupt(FAR struct adc_dev_s *dev)
         }
     }
 
-  /* by MR regval &= ~pending; */
-  /* by MR adc_putreg(priv, STM32_ADC_ISR_OFFSET, regval);
+  /* Clear pending interrupts */
 
-  adc_putreg(priv, STM32_ADC_ISR_OFFSET, pending); */
+  adc_putreg(priv, STM32_ADC_ISR_OFFSET, pending);
+
   return OK;
 }
 
@@ -3103,9 +3123,8 @@ struct adc_dev_s *stm32_adcinitialize(int intf, FAR const uint8_t *chanlist,
 }
 
 #endif /* CONFIG_STM32_STM32F10XX || CONFIG_STM32_STM32F20XX ||
-        * CONFIG_STM32_STM32F30XX || CONFIG_STM32_STM32F33XX ||
-        * CONFIG_STM32_STM32F47XX || CONFIG_STM32_STM32F4XXX ||
-        * CONFIG_STM32_STM32L15XX
+        * CONFIG_STM32_STM32F30XX || CONFIG_STM32_STM32F47XX ||
+        * CONFIG_STM32_STM32F4XXX || CONFIG_STM32_STM32L15XX
         */
 #endif /* CONFIG_STM32_ADC1 || CONFIG_STM32_ADC2 ||
         * CONFIG_STM32_ADC3 || CONFIG_STM32_ADC4

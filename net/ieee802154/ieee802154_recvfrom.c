@@ -91,7 +91,7 @@ struct ieee802154_recvfrom_s
  * Parameters:
  *   conn   - The socket connection structure.
  *
- * Return:
+ * Returned Value:
  *   The number of frames in the queue.
  *
  ****************************************************************************/
@@ -121,7 +121,7 @@ static int ieee802154_count_frames(FAR struct ieee802154_conn_s *conn)
  *
  * Parameters:
  *
- * Returned Values:
+ * Returned Value:
  *
  * Assumptions:
  *   The network is lockec
@@ -209,7 +209,7 @@ static ssize_t ieee802154_recvfrom_rxqueue(FAR struct radio_driver_s *radio,
  *
  * Parameters:
  *
- * Returned Values:
+ * Returned Value:
  *
  * Assumptions:
  *   The network is locked.
@@ -270,7 +270,7 @@ static uint16_t ieee802154_recvfrom_eventhandler(FAR struct net_driver_s *dev,
                * actually read.
                */
 
-              sem_post(&pstate->ir_sem);
+              nxsem_post(&pstate->ir_sem);
             }
         }
     }
@@ -380,8 +380,8 @@ ssize_t ieee802154_recvfrom(FAR struct socket *psock, FAR void *buf,
    * hence, should not have priority inheritance enabled.
    */
 
-  (void)sem_init(&state.ir_sem, 0, 0); /* Doesn't really fail */
-  (void)sem_setprotocol(&state.ir_sem, SEM_PRIO_NONE);
+  (void)nxsem_init(&state.ir_sem, 0, 0); /* Doesn't really fail */
+  (void)nxsem_setprotocol(&state.ir_sem, SEM_PRIO_NONE);
 
   /* Set the socket state to receiving */
 
@@ -417,7 +417,7 @@ ssize_t ieee802154_recvfrom(FAR struct socket *psock, FAR void *buf,
   /* Set the socket state to idle */
 
   psock->s_flags = _SS_SETSTATE(psock->s_flags, _SF_IDLE);
-  sem_destroy(&state.ir_sem);
+  nxsem_destroy(&state.ir_sem);
 
 errout_with_lock:
   net_unlock();

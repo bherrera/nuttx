@@ -241,7 +241,7 @@ static void ssi_enable(struct tiva_ssidev_s *priv, uint32_t enable);
 
 #ifndef CONFIG_SSI_POLLWAIT
 static void ssi_semtake(sem_t *sem);
-#define ssi_semgive(s) sem_post(s);
+#define ssi_semgive(s) nxsem_post(s);
 #endif
 
 /* SSI data transfer */
@@ -507,10 +507,10 @@ static void ssi_semtake(sem_t *sem)
   int ret;
   do
     {
-      ret = sem_wait(sem);
+      ret = nxsem_wait(sem);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
-  while (ret < 0 && errno == EINTR);
-  DEBUGASSERT(ret == 0);
+  while (ret == -EINTR);
 }
 #endif
 
@@ -1084,26 +1084,31 @@ static int ssi_interrupt(int irq, void *context, FAR void *arg)
 static int ssi_lock(FAR struct spi_dev_s *dev, bool lock)
 {
   FAR struct tiva_ssidev_s *priv = (FAR struct tiva_ssidev_s *)dev;
+  int ret;
 
   if (lock)
     {
       /* Take the semaphore (perhaps waiting) */
 
-      while (sem_wait(&priv->exclsem) != 0)
+      do
         {
-          /* The only case that an error should occur here is if the wait was awakened
-           * by a signal.
+          ret = nxsem_wait(&priv->exclsem);
+
+          /* The only case that an error should occur here is if the wait
+           * was awakened by a signal.
            */
 
-          ASSERT(errno == EINTR);
+          DEBUGASSERT(ret == OK || ret == -EINTR);
         }
+      while (ret == -EINTR);
     }
   else
     {
-      (void)sem_post(&priv->exclsem);
+      (void)nxsem_post(&priv->exclsem);
+      ret = OK;
     }
 
-  return OK;
+  return ret;
 }
 
 /****************************************************************************
@@ -1490,7 +1495,7 @@ static void ssi_recvblock(FAR struct spi_dev_s *dev, FAR void *buffer,
  *   required.  Theregore, all GPIO chip management is deferred to board-
  *   specific logic.
  *
- * Input Parameter:
+ * Input Parameters:
  *   Port number (for hardware that has mutiple SSI interfaces)
  *
  * Returned Value:
@@ -1640,10 +1645,10 @@ FAR struct spi_dev_s *tiva_ssibus_initialize(int port)
    * priority inheritance enabled.
    */
 
-  sem_init(&priv->xfrsem, 0, 0);
-  sem_setprotocol(&priv->xfrsem, SEM_PRIO_NONE);
+  nxsem_init(&priv->xfrsem, 0, 0);
+  nxsem_setprotocol(&priv->xfrsem, SEM_PRIO_NONE);
 #endif
-  sem_init(&priv->exclsem, 0, 1);
+  nxsem_init(&priv->exclsem, 0, 1);
 
   /* Set all CR1 fields to reset state.  This will be master mode. */
 

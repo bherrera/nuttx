@@ -80,7 +80,7 @@ struct group_signal_s
  *   pid - The ID of the group member that may be signalled.
  *   arg - A pointer to a struct group_signal_s instance.
  *
- * Return Value:
+ * Returned Value:
  *   0 (OK) on success; a negated errno value on failure.
  *
  ****************************************************************************/
@@ -121,7 +121,7 @@ static int group_signal_handler(pid_t pid, FAR void *arg)
            * receive the signal.
            */
 
-          ret = sig_tcbdispatch(tcb, info->siginfo);
+          ret = nxsig_tcbdispatch(tcb, info->siginfo);
           if (ret < 0)
             {
               return ret;
@@ -152,7 +152,7 @@ static int group_signal_handler(pid_t pid, FAR void *arg)
 
           /* Is there also a action associated with the task group? */
 
-          sigact = sig_findaction(tcb->group, info->siginfo->si_signo);
+          sigact = nxsig_find_action(tcb->group, info->siginfo->si_signo);
           if (sigact)
             {
               /* Yes.. then use this thread.  The requirement is this:
@@ -161,7 +161,7 @@ static int group_signal_handler(pid_t pid, FAR void *arg)
                * blocking the signal will receive the signal.
                */
 
-              ret = sig_tcbdispatch(tcb, info->siginfo);
+              ret = nxsig_tcbdispatch(tcb, info->siginfo);
               if (ret < 0)
                 {
                   return ret;
@@ -195,7 +195,7 @@ static int group_signal_handler(pid_t pid, FAR void *arg)
  * Parameters:
  *   group - The task group that needs to be signalled.
  *
- * Return Value:
+ * Returned Value:
  *   0 (OK) on success; a negated errno value on failure.
  *
  * Assumptions:
@@ -261,7 +261,7 @@ int group_signal(FAR struct task_group_s *group, FAR siginfo_t *siginfo)
 
       /* Now deliver the signal to the selected group member */
 
-      ret = sig_tcbdispatch(tcb, siginfo);
+      ret = nxsig_tcbdispatch(tcb, siginfo);
     }
 
 errout:

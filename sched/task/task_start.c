@@ -70,10 +70,10 @@
  *   execution of a task.  It receives initial control when the task is
  *   started and calls main entry point of the newly started task.
  *
- * Inputs:
+ * Input Parameters:
  *   None
  *
- * Return:
+ * Returned Value:
  *   None
  *
  ****************************************************************************/
@@ -89,7 +89,7 @@ void task_start(void)
   /* Execute the start hook if one has been registered */
 
 #ifdef CONFIG_SCHED_STARTHOOK
-  if (tcb->starthook)
+  if (tcb->starthook != NULL)
     {
       tcb->starthook(tcb->starthookarg);
     }

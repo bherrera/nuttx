@@ -1,7 +1,7 @@
 /****************************************************************************
  *  sched/group/group_leave.c
  *
- *   Copyright (C) 2013-2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2013-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -70,7 +70,7 @@
  * Parameters:
  *   group - The group to be removed.
  *
- * Return Value:
+ * Returned Value:
  *   None.
  *
  * Assumptions:
@@ -129,7 +129,7 @@ static void group_remove(FAR struct task_group_s *group)
  * Parameters:
  *   group - The group to be removed.
  *
- * Return Value:
+ * Returned Value:
  *   None.
  *
  * Assumptions:
@@ -149,7 +149,7 @@ static inline void group_release(FAR struct task_group_s *group)
 #ifndef CONFIG_DISABLE_SIGNALS
   /* Release pending signals */
 
-  sig_release(group);
+  nxsig_release(group);
 #endif
 
 #ifndef CONFIG_DISABLE_PTHREAD
@@ -190,7 +190,7 @@ static inline void group_release(FAR struct task_group_s *group)
 #ifndef CONFIG_DISABLE_MQUEUE
   /* Close message queues opened by members of the group */
 
-  mq_release(group);
+  nxmq_release(group);
 #endif
 
 #if defined(CONFIG_BUILD_KERNEL) && defined(CONFIG_MM_SHM)
@@ -289,7 +289,7 @@ static inline void group_release(FAR struct task_group_s *group)
  *   group - The group from which to remove the member.
  *   pid - The member to be removed.
  *
- * Return Value:
+ * Returned Value:
  *   On success, returns the number of members remaining in the group (>=0).
  *   Can fail only if the member is not found in the group.  On failure,
  *   returns -ENOENT
@@ -346,7 +346,7 @@ static inline void group_removemember(FAR struct task_group_s *group, pid_t pid)
  * Parameters:
  *   tcb - The TCB of the task that is exiting.
  *
- * Return Value:
+ * Returned Value:
  *   None.
  *
  * Assumptions:

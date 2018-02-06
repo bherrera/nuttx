@@ -1,7 +1,7 @@
 /****************************************************************************
  * drivers/pwm.c
  *
- *   Copyright (C) 2011-2013, 2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2011-2013, 2016-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -169,10 +169,9 @@ static int pwm_open(FAR struct file *filep)
 
   /* Get exclusive access to the device structures */
 
-  ret = sem_wait(&upper->exclsem);
+  ret = nxsem_wait(&upper->exclsem);
   if (ret < 0)
     {
-      ret = -get_errno();
       goto errout;
     }
 
@@ -214,7 +213,7 @@ static int pwm_open(FAR struct file *filep)
   ret = OK;
 
 errout_with_sem:
-  sem_post(&upper->exclsem);
+  nxsem_post(&upper->exclsem);
 
 errout:
   return ret;
@@ -238,10 +237,9 @@ static int pwm_close(FAR struct file *filep)
 
   /* Get exclusive access to the device structures */
 
-  ret = sem_wait(&upper->exclsem);
+  ret = nxsem_wait(&upper->exclsem);
   if (ret < 0)
     {
-      ret = -get_errno();
       goto errout;
     }
 
@@ -271,7 +269,7 @@ static int pwm_close(FAR struct file *filep)
   ret = OK;
 
 //errout_with_sem:
-  sem_post(&upper->exclsem);
+  nxsem_post(&upper->exclsem);
 
 errout:
   return ret;
@@ -356,7 +354,7 @@ static int pwm_start(FAR struct pwm_upperhalf_s *upper, unsigned int oflags)
       if (ret == OK)
         {
           /* Should we wait for the pulse output to complete?  Loop in
-           * in case the wakeup form sem_wait() is a false alarm.
+           * in case the wakeup form nxsem_wait() is a false alarm.
            */
 
           while (upper->waiting)
@@ -366,8 +364,8 @@ static int pwm_start(FAR struct pwm_upperhalf_s *upper, unsigned int oflags)
                * clear the waiting flag.
                */
 
-              int tmp = sem_wait(&upper->waitsem);
-              DEBUGASSERT(tmp == OK || get_errno() == EINTR);
+              int tmp = nxsem_wait(&upper->waitsem);
+              DEBUGASSERT(tmp == OK || tmp == -EINTR);
             }
         }
       else
@@ -437,7 +435,7 @@ static int pwm_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 
   /* Get exclusive access to the device structures */
 
-  ret = sem_wait(&upper->exclsem);
+  ret = nxsem_wait(&upper->exclsem);
   if (ret < 0)
     {
       return ret;
@@ -551,7 +549,7 @@ static int pwm_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
         break;
     }
 
-  sem_post(&upper->exclsem);
+  nxsem_post(&upper->exclsem);
   return ret;
 }
 
@@ -570,7 +568,7 @@ static int pwm_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
  *   When this function is called, the "lower half" driver should be in the
  *   reset state (as if the shutdown() method had already been called).
  *
- * Input parameters:
+ * Input Parameters:
  *   path - The full path to the driver to be registered in the NuttX pseudo-
  *     filesystem.  The recommended convention is to name all PWM drivers
  *     as "/dev/pwm0", "/dev/pwm1", etc.  where the driver path differs only
@@ -599,15 +597,15 @@ int pwm_register(FAR const char *path, FAR struct pwm_lowerhalf_s *dev)
 
   /* Initialize the PWM device structure (it was already zeroed by kmm_zalloc()) */
 
-  sem_init(&upper->exclsem, 0, 1);
+  nxsem_init(&upper->exclsem, 0, 1);
 #ifdef CONFIG_PWM_PULSECOUNT
-  sem_init(&upper->waitsem, 0, 0);
+  nxsem_init(&upper->waitsem, 0, 0);
 
   /* The wait semaphore is used for signaling and, hence, should not have priority
    * inheritance enabled.
    */
 
-  sem_setprotocol(&upper->waitsem, SEM_PRIO_NONE);
+  nxsem_setprotocol(&upper->waitsem, SEM_PRIO_NONE);
 #endif
 
   upper->dev = dev;
@@ -643,7 +641,7 @@ int pwm_register(FAR const char *path, FAR struct pwm_lowerhalf_s *dev)
  *      interface using the handle that was previously passed to the
  *      start() method
  *
- * Input parameters:
+ * Input Parameters:
  *   handle - This is the handle that was provided to the lower-half
  *     start() method.
  *
@@ -673,7 +671,7 @@ void pwm_expired(FAR void *handle)
           /* Yes.. clear the waiting flag and awakened the waiting thread */
 
           upper->waiting = false;
-          sem_post(&upper->waitsem);
+          nxsem_post(&upper->waitsem);
         }
 
       /* The PWM is now stopped */

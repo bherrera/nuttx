@@ -53,7 +53,7 @@
  ****************************************************************************/
 
 /****************************************************************************
- * Name: sem_timeout
+ * Name: nxsem_timeout
  *
  * Description:
  *   This function is called if the timeout elapses before before a
@@ -63,7 +63,7 @@
  *   argc - The number of arguments (should be 1)
  *   pid  - The task ID of the task to wakeup
  *
- * Return Value:
+ * Returned Value:
  *   None
  *
  * Assumptions:
@@ -71,7 +71,7 @@
  *
  ****************************************************************************/
 
-void sem_timeout(int argc, wdparm_t pid)
+void nxsem_timeout(int argc, wdparm_t pid)
 {
   FAR struct tcb_s *wtcb;
   irqstate_t flags;
@@ -94,7 +94,7 @@ void sem_timeout(int argc, wdparm_t pid)
     {
       /* Cancel the semaphore wait */
 
-      sem_waitirq(wtcb, ETIMEDOUT);
+      nxsem_wait_irq(wtcb, ETIMEDOUT);
     }
 
   /* Interrupts may now be enabled. */

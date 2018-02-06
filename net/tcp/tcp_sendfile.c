@@ -223,11 +223,25 @@ static uint16_t ack_eventhandler(FAR struct net_driver_s *dev,
 
   else if ((flags & TCP_DISCONN_EVENTS) != 0)
     {
+      FAR struct socket *psock = pstate->snd_sock;
+
       nwarn("WARNING: Lost connection\n");
+
+      /* We could get here recursively through the callback actions of
+       * tcp_lost_connection().  So don't repeat that action if we have
+       * already been disconnected.
+       */
+
+      DEBUGASSERT(psock != NULL);
+      if (_SS_ISCONNECTED(psock->s_flags))
+         {
+           /* Report not connected */
+
+           tcp_lost_connection(psock, pstate->snd_ackcb, flags);
+         }
 
       /* Report not connected */
 
-      tcp_lost_connection(pstate->snd_sock, pstate->snd_ackcb, flags);
       pstate->snd_sent = -ENOTCONN;
     }
 
@@ -239,7 +253,7 @@ static uint16_t ack_eventhandler(FAR struct net_driver_s *dev,
 
   /* Wake up the waiting thread */
 
-  sem_post(&pstate->snd_sem);
+  nxsem_post(&pstate->snd_sem);
 
   return flags;
 }
@@ -352,11 +366,25 @@ static uint16_t sendfile_eventhandler(FAR struct net_driver_s *dev,
 
   if ((flags & TCP_DISCONN_EVENTS) != 0)
     {
+      FAR struct socket *psock = pstate->snd_sock;
+
       nwarn("WARNING: Lost connection\n");
+
+      /* We could get here recursively through the callback actions of
+       * tcp_lost_connection().  So don't repeat that action if we have
+       * already been disconnected.
+       */
+
+      DEBUGASSERT(psock != NULL);
+      if (_SS_ISCONNECTED(psock->s_flags))
+         {
+           /* Report not connected */
+
+           tcp_lost_connection(psock, pstate->snd_datacb, flags);
+         }
 
       /* Report not connected */
 
-      tcp_lost_connection(pstate->snd_sock, pstate->snd_datacb, flags);
       pstate->snd_sent = -ENOTCONN;
       goto end_wait;
     }
@@ -394,18 +422,16 @@ static uint16_t sendfile_eventhandler(FAR struct net_driver_s *dev,
                           pstate->snd_foffset + pstate->snd_sent, SEEK_SET);
           if (ret < 0)
             {
-              int errcode = get_errno();
-              nerr("ERROR: Failed to lseek: %d\n", errcode);
-              pstate->snd_sent = -errcode;
+              nerr("ERROR: Failed to lseek: %d\n", ret);
+              pstate->snd_sent = ret;
               goto end_wait;
             }
 
           ret = file_read(pstate->snd_file, dev->d_appdata, sndlen);
           if (ret < 0)
             {
-              int errcode = get_errno();
-              nerr("ERROR: Failed to read from input file: %d\n", errcode);
-              pstate->snd_sent = -errcode;
+              nerr("ERROR: Failed to read from input file: %d\n", (int)ret);
+              pstate->snd_sent = ret;
               goto end_wait;
             }
 
@@ -477,7 +503,7 @@ end_wait:
 
   /* Wake up the waiting thread */
 
-  sem_post(&pstate->snd_sem);
+  nxsem_post(&pstate->snd_sem);
 
 wait:
   return flags;
@@ -621,8 +647,8 @@ ssize_t tcp_sendfile(FAR struct socket *psock, FAR struct file *infile,
    * priority inheritance enabled.
    */
 
-  sem_init(&state.snd_sem, 0, 0);           /* Doesn't really fail */
-  sem_setprotocol(&state.snd_sem, SEM_PRIO_NONE);
+  nxsem_init(&state.snd_sem, 0, 0);           /* Doesn't really fail */
+  nxsem_setprotocol(&state.snd_sem, SEM_PRIO_NONE);
 
   state.snd_sock    = psock;                /* Socket descriptor to use */
   state.snd_foffset = offset ? *offset : 0; /* Input file offset */
@@ -697,7 +723,7 @@ errout_datacb:
 
 errout_locked:
 
-  sem_destroy(&state. snd_sem);
+  nxsem_destroy(&state. snd_sem);
   net_unlock();
 
 errout:

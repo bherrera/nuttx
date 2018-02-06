@@ -500,7 +500,7 @@ static void stm32_1wire_set_baud(struct stm32_1wire_priv_s *priv)
  * Description:
  *   Enable or disable APB clock for the USART peripheral
  *
- * Input parameters:
+ * Input Parameters:
  *   priv - A reference to the 1-Wire driver state structure
  *   on  - Enable clock if 'on' is 'true' and disable if 'false'
  *
@@ -708,14 +708,14 @@ static int stm32_1wire_deinit(FAR struct stm32_1wire_priv_s *priv)
 
 static inline void stm32_1wire_sem_init(FAR struct stm32_1wire_priv_s *priv)
 {
-  sem_init(&priv->sem_excl, 0, 1);
-  sem_init(&priv->sem_isr, 0, 0);
+  nxsem_init(&priv->sem_excl, 0, 1);
+  nxsem_init(&priv->sem_isr, 0, 0);
 
   /* The sem_isr semaphore is used for signaling and, hence, should not have
    * priority inheritance enabled.
    */
 
-  sem_setprotocol(&priv->sem_isr, SEM_PRIO_NONE);
+  nxsem_setprotocol(&priv->sem_isr, SEM_PRIO_NONE);
 }
 
 /****************************************************************************
@@ -728,8 +728,8 @@ static inline void stm32_1wire_sem_init(FAR struct stm32_1wire_priv_s *priv)
 
 static inline void stm32_1wire_sem_destroy(FAR struct stm32_1wire_priv_s *priv)
 {
-  sem_destroy(&priv->sem_excl);
-  sem_destroy(&priv->sem_isr);
+  nxsem_destroy(&priv->sem_excl);
+  nxsem_destroy(&priv->sem_isr);
 }
 
 /****************************************************************************
@@ -742,10 +742,21 @@ static inline void stm32_1wire_sem_destroy(FAR struct stm32_1wire_priv_s *priv)
 
 static inline void stm32_1wire_sem_wait(FAR struct stm32_1wire_priv_s *priv)
 {
-  while (sem_wait(&priv->sem_excl) != 0)
+  int ret;
+
+  do
     {
-      ASSERT(errno == EINTR);
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&priv->sem_excl);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
+       */
+
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -758,7 +769,7 @@ static inline void stm32_1wire_sem_wait(FAR struct stm32_1wire_priv_s *priv)
 
 static inline void stm32_1wire_sem_post(FAR struct stm32_1wire_priv_s *priv)
 {
-  sem_post(&priv->sem_excl);
+  nxsem_post(&priv->sem_excl);
 }
 
 /****************************************************************************
@@ -803,11 +814,11 @@ static int stm32_1wire_process(struct stm32_1wire_priv_s *priv,
           stm32_1wire_send(priv, RESET_TX);
           leave_critical_section(irqs);
 
-          /* Wait */
+          /* Wait.  Break on timeout if TX line closed to GND */
 
           clock_gettime(CLOCK_REALTIME, &abstime);
           abstime.tv_sec += BUS_TIMEOUT;
-          sem_timedwait(&priv->sem_isr, &abstime); /* break on timeout if TX line closed to GND */
+          (void)nxsem_timedwait(&priv->sem_isr, &abstime);
           break;
 
         case ONEWIRETASK_WRITE:
@@ -825,11 +836,11 @@ static int stm32_1wire_process(struct stm32_1wire_priv_s *priv,
           stm32_1wire_send(priv, (*priv->byte & (1 << priv->bit)) ? WRITE_TX1 : WRITE_TX0);
           leave_critical_section(irqs);
 
-          /* Wait */
+          /* Wait.  Break on timeout if TX line closed to GND */
 
           clock_gettime(CLOCK_REALTIME, &abstime);
           abstime.tv_sec += BUS_TIMEOUT;
-          sem_timedwait(&priv->sem_isr, &abstime); /* break on timeout if TX line closed to GND */
+          (void)nxsem_timedwait(&priv->sem_isr, &abstime);
           break;
 
         case ONEWIRETASK_READ:
@@ -847,11 +858,11 @@ static int stm32_1wire_process(struct stm32_1wire_priv_s *priv,
           stm32_1wire_send(priv, READ_TX);
           leave_critical_section(irqs);
 
-          /* Wait */
+          /* Wait.  Break on timeout if TX line closed to GND */
 
           clock_gettime(CLOCK_REALTIME, &abstime);
           abstime.tv_sec += BUS_TIMEOUT;
-          sem_timedwait(&priv->sem_isr, &abstime); /* break on timeout if TX line closed to GND */
+          (void)nxsem_timedwait(&priv->sem_isr, &abstime);
           break;
         }
 
@@ -910,7 +921,7 @@ static int stm32_1wire_isr(int irq, void *context, void *arg)
             case ONEWIRETASK_RESET:
               priv->msgs = NULL;
               priv->result = (dr != RESET_TX) ? OK : -ENODEV; /* if read RESET_TX then no slave */
-              sem_post(&priv->sem_isr);
+              nxsem_post(&priv->sem_isr);
               break;
 
             case ONEWIRETASK_WRITE:
@@ -921,7 +932,7 @@ static int stm32_1wire_isr(int irq, void *context, void *arg)
                     {
                       priv->msgs = NULL;
                       priv->result = OK;
-                      sem_post(&priv->sem_isr);
+                      nxsem_post(&priv->sem_isr);
                       break;
                     }
                 }
@@ -948,7 +959,7 @@ static int stm32_1wire_isr(int irq, void *context, void *arg)
                     {
                       priv->msgs = NULL;
                       priv->result = OK;
-                      sem_post(&priv->sem_isr);
+                      nxsem_post(&priv->sem_isr);
                       break;
                     }
                 }
@@ -988,7 +999,7 @@ static int stm32_1wire_isr(int irq, void *context, void *arg)
         {
           priv->msgs = NULL;
           priv->result = ERROR;
-          sem_post(&priv->sem_isr);
+          nxsem_post(&priv->sem_isr);
         }
     }
 
@@ -1003,7 +1014,7 @@ static int stm32_1wire_isr(int irq, void *context, void *arg)
         {
           priv->msgs = NULL;
           priv->result = ERROR;
-          sem_post(&priv->sem_isr);
+          nxsem_post(&priv->sem_isr);
         }
     }
 
@@ -1138,7 +1149,7 @@ static int stm32_1wire_exchange(FAR struct onewire_dev_s *dev, bool reset,
  *   instances of the interface, each of which may be set up with a
  *   different frequency and slave address.
  *
- * Input Parameter:
+ * Input Parameters:
  *   Port number (for hardware that has multiple 1-Wire interfaces)
  *
  * Returned Value:
@@ -1234,7 +1245,7 @@ FAR struct onewire_dev_s *stm32_1wireinitialize(int port)
  * Description:
  *   De-initialize the selected 1-Wire port, and power down the device.
  *
- * Input Parameter:
+ * Input Parameters:
  *   Device structure as returned by the stm32_1wireinitialize()
  *
  * Returned Value:

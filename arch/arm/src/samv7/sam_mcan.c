@@ -1,7 +1,7 @@
 /****************************************************************************
  * arch/arm/src/samv7/sam_mcan.c
  *
- *   Copyright (C) 2015-2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2015-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * References:
@@ -922,7 +922,7 @@ static void mcan_dumpregs(FAR struct sam_mcan_s *priv, FAR const char *msg);
 /* Semaphore helpers */
 
 static void mcan_dev_lock(FAR struct sam_mcan_s *priv);
-#define mcan_dev_unlock(priv) sem_post(&priv->locksem)
+#define mcan_dev_unlock(priv) nxsem_post(&priv->locksem)
 
 static void mcan_buffer_reserve(FAR struct sam_mcan_s *priv);
 static void mcan_buffer_release(FAR struct sam_mcan_s *priv);
@@ -1381,10 +1381,10 @@ static void mcan_dev_lock(FAR struct sam_mcan_s *priv)
 
   do
     {
-      ret = sem_wait(&priv->locksem);
-      DEBUGASSERT(ret == 0 || errno == EINTR);
+      ret = nxsem_wait(&priv->locksem);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
-  while (ret < 0);
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -1441,7 +1441,7 @@ static void mcan_buffer_reserve(FAR struct sam_mcan_s *priv)
 
           flags = enter_critical_section();
           txfqs1 = mcan_getreg(priv, SAM_MCAN_TXFQS_OFFSET);
-          (void)sem_getvalue(&priv->txfsem, &sval);
+          (void)nxsem_getvalue(&priv->txfsem, &sval);
           txfqs2 = mcan_getreg(priv, SAM_MCAN_TXFQS_OFFSET);
 
           /* If the semaphore count and the TXFQS samples are in
@@ -1477,7 +1477,7 @@ static void mcan_buffer_reserve(FAR struct sam_mcan_s *priv)
           if (sval > 0)
             {
               canerr("ERROR: TX FIFOQ full but txfsem is %d\n", sval);
-              sem_reset(&priv->txfsem, 0);
+              nxsem_reset(&priv->txfsem, 0);
             }
         }
 
@@ -1502,7 +1502,7 @@ static void mcan_buffer_reserve(FAR struct sam_mcan_s *priv)
             {
               /* Bump up the count by one and try again */
 
-              sem_post(&priv->txfsem);
+              nxsem_post(&priv->txfsem);
               leave_critical_section(flags);
               continue;
             }
@@ -1542,15 +1542,15 @@ static void mcan_buffer_reserve(FAR struct sam_mcan_s *priv)
 
           /* Reset the semaphore count to the Tx FIFO free level. */
 
-          sem_reset(&priv->txfsem, tffl);
+          nxsem_reset(&priv->txfsem, tffl);
         }
 #endif
 
       /* The semaphore value is reasonable.  Wait for the next TC interrupt. */
 
-      ret = sem_wait(&priv->txfsem);
+      ret = nxsem_wait(&priv->txfsem);
       leave_critical_section(flags);
-      DEBUGASSERT(ret == 0 || errno == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
   while (ret < 0);
 }
@@ -1587,10 +1587,10 @@ static void mcan_buffer_release(FAR struct sam_mcan_s *priv)
    * many times.
    */
 
-  (void)sem_getvalue(&priv->txfsem, &sval);
+  (void)nxsem_getvalue(&priv->txfsem, &sval);
   if (sval < priv->config->ntxfifoq)
     {
-      sem_post(&priv->txfsem);
+      nxsem_post(&priv->txfsem);
     }
   else
     {
@@ -1609,7 +1609,7 @@ static void mcan_buffer_release(FAR struct sam_mcan_s *priv)
  *   standard CAN.  In CAN FD mode, the values 9 to 15 are encoded to values
  *   in the range 12 to 64.
  *
- * Input Parameter:
+ * Input Parameters:
  *   dlc    - the DLC value to convert to a byte count
  *
  * Returned Value:
@@ -1665,7 +1665,7 @@ static uint8_t mcan_dlc2bytes(FAR struct sam_mcan_s *priv, uint8_t dlc)
  *   standard CAN.  In CAN FD mode, the values 9 to 15 are encoded to values
  *   in the range 12 to 64.
  *
- * Input Parameter:
+ * Input Parameters:
  *   nbytes - the byte count to convert to a DLC value
  *
  * Returned Value:
@@ -2269,8 +2269,8 @@ static void mcan_reset(FAR struct can_dev_s *dev)
    * will not wake up any waiting threads.
    */
 
-  sem_destroy(&priv->txfsem);
-  sem_init(&priv->txfsem, 0, config->ntxfifoq);
+  nxsem_destroy(&priv->txfsem);
+  nxsem_init(&priv->txfsem, 0, config->ntxfifoq);
 
   /* Disable peripheral clocking to the MCAN controller */
 
@@ -2949,7 +2949,7 @@ static bool mcan_txready(FAR struct can_dev_s *dev)
    * the TX FIFO/queue.  Make sure that they are consistent.
    */
 
-  (void)sem_getvalue(&priv->txfsem, &sval);
+  (void)nxsem_getvalue(&priv->txfsem, &sval);
   DEBUGASSERT(((notfull && sval > 0) || (!notfull && sval <= 0)) &&
               (sval <= priv->config->ntxfifoq));
 #endif
@@ -3016,7 +3016,7 @@ static bool mcan_txempty(FAR struct can_dev_s *dev)
    * elements, then there is no transfer in progress.
    */
 
-  (void)sem_getvalue(&priv->txfsem, &sval);
+  (void)nxsem_getvalue(&priv->txfsem, &sval);
   DEBUGASSERT(sval > 0 && sval <= priv->config->ntxfifoq);
 
   empty = (sval ==  priv->config->ntxfifoq);
@@ -3649,7 +3649,7 @@ static int mcan_interrupt(int irq, void *context, FAR void *arg)
  * Description:
  *   MCAN hardware initialization
  *
- * Input Parameter:
+ * Input Parameters:
  *   priv - A pointer to the private data structure for this MCAN peripheral
  *
  * Returned Value:
@@ -3924,7 +3924,7 @@ static int mcan_hw_initialize(struct sam_mcan_s *priv)
  * Description:
  *   Initialize the selected MCAN port
  *
- * Input Parameter:
+ * Input Parameters:
  *   port - Port number (for hardware that has multiple MCAN interfaces),
  *          0=MCAN0, 1=MCAN1
  *
@@ -4014,8 +4014,8 @@ FAR struct can_dev_s *sam_mcan_initialize(int port)
 
       /* Initialize semaphores */
 
-      sem_init(&priv->locksem, 0, 1);
-      sem_init(&priv->txfsem, 0, config->ntxfifoq);
+      nxsem_init(&priv->locksem, 0, 1);
+      nxsem_init(&priv->txfsem, 0, config->ntxfifoq);
 
       dev->cd_ops  = &g_mcanops;
       dev->cd_priv = (FAR void *)priv;

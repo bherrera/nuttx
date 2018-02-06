@@ -136,7 +136,7 @@ static uint16_t sixlowpan_udp_chksum(FAR const struct ipv6udp_hdr_s *ipv6udp,
  *   may be returned when they are not NULL and 0), and the error ENOTCONN is
  *   returned when the socket was not actually connected.
  *
- * Input Parmeters
+ * Input Parameters:
  *   psock    A pointer to a NuttX-specific, internal socket structure
  *   buf      Data to send
  *   buflen   Length of data to send
@@ -292,12 +292,10 @@ ssize_t psock_6lowpan_udp_sendto(FAR struct socket *psock,
   g_netstats.udp.sent++;
 #endif
 
-  /* Get the IEEE 802.15.4 MAC address of the destination  This assumes an
-   * encoding of the MAC address in the IPv6 address.
-   */
+  /* Get the IEEE 802.15.4 MAC address of the next hop. */
 
-  ret = sixlowpan_destaddrfromip((FAR struct radio_driver_s *)dev,
-                                 to6->sin6_addr.in6_u.u6_addr16, &destmac);
+  ret = sixlowpan_nexthopaddr((FAR struct radio_driver_s *)dev,
+                              to6->sin6_addr.in6_u.u6_addr16, &destmac);
   if (ret < 0)
     {
       nerr("ERROR: Failed to get dest MAC address: %d\n", ret);
@@ -339,7 +337,7 @@ ssize_t psock_6lowpan_udp_sendto(FAR struct socket *psock,
  *   psock_6lowpan_udp_send() call may be used with connectionlesss UDP
  *   sockets.
  *
- * Input Parmeters
+ * Input Parameters:
  *   psock  - An instance of the internal socket structure.
  *   buf    - Data to send
  *   buflen - Length of data to send
@@ -415,7 +413,7 @@ ssize_t psock_6lowpan_udp_send(FAR struct socket *psock, FAR const void *buf,
  *   Handles forwarding a UDP packet via 6LoWPAN.  This is currently only
  *   used by the IPv6 forwarding logic.
  *
- * Input Parmeters
+ * Input Parameters:
  *   dev    - An instance of nework device state structure
  *   fwddev - The network device used to send the data.  This will be the
  *            same device except for the IP forwarding case where packets
@@ -441,11 +439,11 @@ void sixlowpan_udp_send(FAR struct net_driver_s *dev,
 
   /* Double check */
 
-  DEBUGASSERT(dev != NULL && dev->d_len > 0);
+  DEBUGASSERT(dev != NULL && dev->d_len > 0 && fwddev != NULL);
 
   ninfo("d_len %u\n", dev->d_len);
 
-  if (dev != NULL && dev->d_len > 0)
+  if (dev != NULL && dev->d_len > 0 && fwddev != NULL)
     {
 
       sixlowpan_dumpbuffer("Outgoing UDP packet",
@@ -468,12 +466,10 @@ void sixlowpan_udp_send(FAR struct net_driver_s *dev,
           uint16_t buflen;
           int ret;
 
-          /* Get the IEEE 802.15.4 MAC address of the destination.  This
-           * assumes an encoding of the MAC address in the IPv6 address.
-           */
+          /* Get the IEEE 802.15.4 MAC address of the next hop. */
 
-          ret = sixlowpan_destaddrfromip((FAR struct radio_driver_s *)dev,
-                                         ipv6udp->ipv6.destipaddr, &destmac);
+          ret = sixlowpan_nexthopaddr((FAR struct radio_driver_s *)fwddev,
+                                      ipv6udp->ipv6.destipaddr, &destmac);
           if (ret < 0)
             {
               nerr("ERROR: Failed to get dest MAC address: %d\n", ret);

@@ -71,6 +71,7 @@
 
 #include <nuttx/arch.h>
 #include <nuttx/wqueue.h>
+#include <nuttx/signal.h>
 #include <nuttx/analog/adc.h>
 #include <nuttx/analog/ioctl.h>
 
@@ -577,7 +578,7 @@ static int tiva_adc_ioctl(struct adc_dev_s *dev, int cmd, unsigned long arg)
           tiva_adc_proc_trig(priv->devno, (uint8_t)SSE_PROC_TRIG(sse));
           while (!tiva_adc_sse_int_status(priv->devno, sse))
             {
-              usleep(100);
+              nxsig_usleep(100);
             }
 
           tiva_adc_sse_clear_int(priv->devno, sse);
@@ -654,7 +655,7 @@ static int tiva_adc_ioctl(struct adc_dev_s *dev, int cmd, unsigned long arg)
  *   are disabled when this function runs. tiva_adc_read will
  *   re-enable interrupts when it completes processing all pending events.
  *
- * Input Parameters
+ * Input Parameters:
  *   arg - The ADC SSE data structure cast to (void *)
  *
  * Returned Value:
@@ -802,7 +803,7 @@ static struct tiva_adc_s *tiva_adc_struct_init(struct tiva_adc_cfg_s *cfg)
                     {
                       sse->adc = cfg->adc;
                       sse->num = s;
-                      sem_init(&sse->exclsem, SEM_PROCESS_PRIVATE, 1);
+                      nxsem_init(&sse->exclsem, SEM_PROCESS_PRIVATE, 1);
                       sse->ena = false;
                       sse->cfg = true;
                     }
@@ -955,23 +956,24 @@ void tiva_adc_lock(FAR struct tiva_adc_s *priv, int sse)
 
   do
     {
-      ret = sem_wait(&s->exclsem);
+      ret = nxsem_wait(&s->exclsem);
 
       /* This should only fail if the wait was canceled by an signal (and the
        * worker thread will receive a lot of signals).
        */
 
-      DEBUGASSERT(ret == OK || errno == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
 
 #ifdef CONFIG_DEBUG_ANALOG
       if (loop_count % 1000)
         {
           ainfo("loop=%d\n");
         }
+
       ++loop_count;
 #endif
     }
-  while (ret < 0);
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -986,7 +988,7 @@ void tiva_adc_unlock(FAR struct tiva_adc_s *priv, int sse)
 {
   ainfo("Unlocking\n");
   struct tiva_adc_sse_s *s = g_sses[SSE_IDX(priv->devno, sse)];
-  sem_post(&s->exclsem);
+  nxsem_post(&s->exclsem);
 }
 
 /* DEBUG ********************************************************************/

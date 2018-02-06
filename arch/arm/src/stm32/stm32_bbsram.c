@@ -205,7 +205,7 @@ static void stm32_bbsram_dump(FAR struct bbsramfh_s *bbf, char *op)
 
 static void stm32_bbsram_semgive(FAR struct stm32_bbsram_s *priv)
 {
-  sem_post(&priv->exclsem);
+  nxsem_post(&priv->exclsem);
 }
 
 /************************************************************************************
@@ -233,10 +233,10 @@ static void stm32_bbsram_semtake(FAR struct stm32_bbsram_s *priv)
 
   do
     {
-      ret = sem_wait(&priv->exclsem);
-      DEBUGASSERT(ret == 0 || errno == EINTR);
+      ret = nxsem_wait(&priv->exclsem);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
-  while (ret < 0);
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -554,7 +554,7 @@ static int stm32_bbsram_poll(FAR struct file *filep, FAR struct pollfd *fds,
       fds->revents |= (fds->events & (POLLIN | POLLOUT));
       if (fds->revents != 0)
         {
-          sem_post(fds->sem);
+          nxsem_post(fds->sem);
         }
     }
 
@@ -635,7 +635,7 @@ static int stm32_bbsram_unlink(FAR struct inode *inode)
   stm32_bbsram_lock();
   bbr->refs  = 0;
   stm32_bbsram_semgive(bbr);
-  sem_destroy(&bbr->exclsem);
+  nxsem_destroy(&bbr->exclsem);
   return 0;
 }
 #endif
@@ -698,7 +698,7 @@ static int stm32_bbsram_probe(int *ent, struct stm32_bbsram_s pdev[])
 
           pdev[i].bbf = pf;
           pf = (struct bbsramfh_s *)((uint8_t *)pf + alloc);
-          sem_init(&g_bbsram[i].exclsem, 0, 1);
+          nxsem_init(&g_bbsram[i].exclsem, 0, 1);
         }
 
       avail -= alloc;

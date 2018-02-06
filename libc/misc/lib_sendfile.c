@@ -45,25 +45,11 @@
 #include <unistd.h>
 #include <errno.h>
 
+#include <nuttx/fs/fs.h>
+
 #include "libc.h"
 
 #if CONFIG_NSOCKET_DESCRIPTORS > 0 || CONFIG_NFILE_DESCRIPTORS > 0
-
-/****************************************************************************
- * Private types
- ****************************************************************************/
-
-/****************************************************************************
- * Private Data
- ****************************************************************************/
-
-/****************************************************************************
- * Public Data
- ****************************************************************************/
-
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
 
 /****************************************************************************
  * Public Functions
@@ -86,7 +72,7 @@
  *   different semantics and prototypes.  sendfile() should not be used
  *   in portable programs.
  *
- * Input Parmeters:
+ * Input Parameters:
  *   infd   - A file (or socket) descriptor opened for reading
  *   outfd  - A descriptor opened for writing.
  *   offset - If 'offset' is not NULL, then it points to a variable
@@ -166,7 +152,7 @@ ssize_t sendfile(int outfd, int infd, off_t *offset, size_t count)
         {
           /* Read a buffer of data from the infd */
 
-          nbytesread = read(infd, iobuffer, CONFIG_LIB_SENDFILE_BUFSIZE);
+          nbytesread = _NX_READ(infd, iobuffer, CONFIG_LIB_SENDFILE_BUFSIZE);
 
           /* Check for end of file */
 
@@ -188,14 +174,17 @@ ssize_t sendfile(int outfd, int infd, off_t *offset, size_t count)
 
           else if (nbytesread < 0)
             {
+#ifndef CONFIG_DISABLE_SIGNALS
+              int errcode = _NX_GETERRNO(nbytesread);
+
               /* EINTR is not an error (but will still stop the copy) */
 
-#ifndef CONFIG_DISABLE_SIGNALS
-              if (errno != EINTR || ntransferred == 0)
+              if (errcode != EINTR || ntransferred == 0)
 #endif
                 {
                   /* Read error.  Break out and return the error condition. */
 
+                  _NX_SETERRNO(nbytesread);
                   ntransferred = ERROR;
                   endxfr       = true;
                   break;
@@ -217,7 +206,7 @@ ssize_t sendfile(int outfd, int infd, off_t *offset, size_t count)
             {
               /* Write the buffer of data to the outfd */
 
-              nbyteswritten = write(outfd, wrbuffer, nbytesread);
+              nbyteswritten = _NX_WRITE(outfd, wrbuffer, nbytesread);
 
               /* Check for a complete (or parial) write.  write() should not
                * return zero.
@@ -242,6 +231,9 @@ ssize_t sendfile(int outfd, int infd, off_t *offset, size_t count)
 
               else
                 {
+#ifndef CONFIG_DISABLE_SIGNALS
+                  int errcode = _NX_GETERRNO(nbyteswritten);
+
                   /* Check for a read ERROR.  EINTR is a special case.  This
                    * function should break out and return an error if EINTR
                    * is returned and no data has been transferred.  But what
@@ -249,12 +241,14 @@ ssize_t sendfile(int outfd, int infd, off_t *offset, size_t count)
                    * suppose just continue?
                    */
 
-#ifndef CONFIG_DISABLE_SIGNALS
-                  if (errno != EINTR || ntransferred == 0)
+                  if (errcode != EINTR || ntransferred == 0)
 #endif
                     {
-                      /* Write error.  Break out and return the error condition */
+                      /* Write error.  Break out and return the error
+                       * condition.
+                       */
 
+                      _NX_SETERRNO(nbyteswritten);
                       ntransferred = ERROR;
                       endxfr       = true;
                       break;

@@ -249,45 +249,25 @@
 #define OPAMP2_VMSEL OPAMP2_VMSEL_PC5
 #define OPAMP2_VPSEL OPAMP2_VPSEL_PB14
 
+/* Configuration specific to high priority interrupts example:
+ *   - HRTIM Timer A trigger for ADC if DMA transfer
+ *   - ADC DMA transfer on DMA1_CH1
+ */
+
+#ifdef CONFIG_NUCLEOF334R8_HIGHPRI
+
 /* HRTIM */
+
+#define HRTIM_TIMA_PRESCALER HRTIM_PRESCALER_128
+#define HRTIM_TIMA_MODE      HRTIM_MODE_CONT
+
+#define HRTIM_ADC_TRG1       HRTIM_ADCTRG13_APER
 
 /* DMA channels *************************************************************/
 /* ADC */
 
 #define ADC1_DMA_CHAN DMACHAN_ADC1     /* DMA1_CH1 */
-#define ADC2_DMA_CHAN DMACHAN_ADC2_1   /* DMA1_CH2 */
 
-/****************************************************************************
- * Public Data
- ****************************************************************************/
+#endif  /* CONFIG_NUCLEOF334R8_HIGHPRI */
 
-#ifndef __ASSEMBLY__
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
-/****************************************************************************
- * Public Function Prototypes
- ****************************************************************************/
-
-/****************************************************************************
- * Name: stm32_boardinitialize
- *
- * Description:
- *   All STM32 architectures must provide the following entry point.  This
- *   entry point is called early in the initialization -- after all memory
- *   has been configured and mapped but before any devices have been
- *   initialized.
- *
- ****************************************************************************/
-
-void stm32_boardinitialize(void);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* __ASSEMBLY__ */
 #endif /* __CONFIG_NUCLEO_F334R8_INCLUDE_BOARD_H */

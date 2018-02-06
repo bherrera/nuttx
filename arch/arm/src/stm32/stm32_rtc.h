@@ -66,8 +66,10 @@
 
 /* Alarm function differs from part to part */
 
-#ifdef CONFIG_STM32_STM32F4XXX
+#if defined(CONFIG_STM32_STM32F4XXX)
 #  include "stm32f40xxx_alarm.h"
+#elif defined(CONFIG_STM32_STM32L15XX)
+#  include "stm32l15xxx_alarm.h"
 #else
 #  include "stm32_alarm.h"
 #endif
@@ -94,7 +96,7 @@
 #else /* !CONFIG_STM32_STM32F10XX */
 
 #if !defined(CONFIG_RTC_MAGIC)
-#  define CONFIG_RTC_MAGIC         (0xfacefeee)
+#  define CONFIG_RTC_MAGIC         (0xfacefeed)
 #endif
 
 #if !defined(CONFIG_RTC_MAGIC_REG)
@@ -135,7 +137,7 @@ extern "C"
  * Public Functions
  ****************************************************************************/
 
-/************************************************************************************
+/****************************************************************************
  * Name: stm32_rtc_irqinitialize
  *
  * Description:
@@ -148,7 +150,7 @@ extern "C"
  * Returned Value:
  *   Zero (OK) on success; a negated errno on failure
  *
- ************************************************************************************/
+ ****************************************************************************/
 
 int stm32_rtc_irqinitialize(void);
 
@@ -206,7 +208,7 @@ int stm32_rtc_setdatetime(FAR const struct tm *tp);
  *   Instantiate the RTC lower half driver for the STM32.  General usage:
  *
  *     #include <nuttx/timers/rtc.h>
- *     #include "stm32_rtc.h>
+ *     #include "stm32_rtc.h"
  *
  *     struct rtc_lowerhalf_s *lower;
  *     lower = stm32_rtc_lowerhalf();

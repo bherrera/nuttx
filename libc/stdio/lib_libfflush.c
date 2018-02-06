@@ -65,7 +65,7 @@
  *  stream - the stream to flush
  *  bforce - flush must be complete.
  *
- * Return:
+ * Returned Value:
  *  A negated errno value on failure, otherwise the number of bytes remaining
  *  in the buffer.
  *
@@ -129,7 +129,7 @@ ssize_t lib_fflush(FAR FILE *stream, bool bforce)
         {
           /* Perform the write */
 
-          bytes_written = write(stream->fs_fd, src, nbuffer);
+          bytes_written = _NX_WRITE(stream->fs_fd, src, nbuffer);
           if (bytes_written < 0)
             {
               /* Write failed.  The cause of the failure is in 'errno'.
@@ -137,7 +137,7 @@ ssize_t lib_fflush(FAR FILE *stream, bool bforce)
                */
 
               stream->fs_flags |= __FS_FLAG_ERROR;
-              ret = -get_errno();
+              ret = _NX_GETERRVAL(bytes_written);
               goto errout_with_sem;
             }
 

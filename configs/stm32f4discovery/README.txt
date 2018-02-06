@@ -33,6 +33,7 @@ Contents
   - PWM
   - UARTs
   - Timer Inputs/Outputs
+  - Nintendo Wii Nunchuck
   - Quadrature Encoder
   - FPU
   - STM32F4DIS-BB
@@ -217,6 +218,39 @@ TIM14
    with care (See table 5 in the STM32F4Discovery User Guide).  The rest are
    free I/O pins.
 ** Port H pins are not supported by the MCU
+
+Nintendo Wii Nunchuck:
+======================
+
+  There is a driver on NuttX to support Nintendo Wii Nunchuck Joystick. If you
+  want to use it please select these options:
+
+  - Enable the I2C1 at System Type -> STM32 Peripheral Support, it will enable:
+
+    CONFIG_STM32_I2C1=y
+
+  - Enable to Custom board/driver initialization at RTOS Features -> RTOS hooks
+
+    CONFIG_BOARD_INITIALIZE=y
+
+  - Enable the I2C Driver Support at Device Drivers, it will enable this symbol:
+
+    CONFIG_I2C=y
+
+  - Nintendo Wii Nunchuck Joystick at Device Drivers -> [*] Input Device Support
+
+    CONFIG_INPUT=y
+      CONFIG_INPUT_NUNCHUCK=y
+
+  - Enable the Nunchuck joystick example at Application Configuration -> Examples
+
+  CONFIG_EXAMPLES_NUNCHUCK=y
+    CONFIG_EXAMPLES_NUNCHUCK_DEVNAME="/dev/nunchuck0"
+
+  You need to connect GND and +3.3V pins from Nunchuck connector to GND and 3V
+  of stm32f4discovery respectively (Nunchuck also can work connected to 5V, but
+  I don't recommend it). Connect I2C Clock from Nunchuck to SCK (PB6) and the
+  I2C Data to SDA (PB9).
 
 Quadrature Encoder:
 ===================
@@ -1153,7 +1187,7 @@ Where <subdir> is one of the following:
          CONFIG_NET_ARP=y
          CONFIG_NET_ARP_SEND=y (optional)
          CONFIG_NET_ICMP=y
-         CONFIG_NET_ICMP_PING=y
+         CONFIG_NET_ICMP_SOCKET=y
 
          CONFIG_NETDB_DNSCLIENT=y
          CONFIG_NETUTILS_TELNETD=y
@@ -1599,6 +1633,74 @@ Where <subdir> is one of the following:
        2015-04-30
           Appears to be fully functional.
 
+   12. Using USB Device as a Mass Storage for the host computer:
+
+       System Type  --->
+           STM32 Peripheral Support  --->
+               [*] OTG FS
+
+       Device Drivers  --->
+           [*] USB Device Driver Support  --->
+               [*]   USB Mass storage class device  --->
+                   [*]   Mass storage removable
+
+           [*] RAM Disk Support
+
+       Board Selection  --->
+           [*] Enable boardctl() interface
+           [*]   Enable USB device controls
+
+       File Systems  --->
+           [*] FAT file system
+           [*]   FAT upper/lower names
+           [*]   FAT long file names
+
+           [*] PROCFS File System
+
+       Application Configuration  --->
+           System Libraries and NSH Add-Ons  --->
+               [*] USB Mass Storage Device Commands  --->
+                   (/dev/ram0) LUN1 Device Path
+
+       Compile and flash the firmware in the board as usual, then in the nsh:
+
+       nsh> mkrd -m 0 -s 512 64
+
+       nsh> ls /dev
+       /dev:
+        console
+        null
+        ram0
+        ttyS0
+
+       nsh> mkfatfs /dev/ram0
+
+       Connect a USB cable to STM32F4Discovery board (connector CN5) and run:
+
+       nsh> msconn
+       mcsonn_main: Creating block drivers
+       mcsonn_main: Configuring with NLUNS=1
+       mcsonn_main: handle=1000a550
+       mcsonn_main: Bind LUN=0 to /dev/ram0
+       mcsonn_main: Connected
+
+       In this moment a 33KB disk should appear in your host computer. If you
+       saved some file on this small disk you can now run disconnect command:
+
+       nsh> msdis
+       msdis: Disconnected
+
+       Remove the USB cable from microUSB connector and run:
+
+       nsh> mount -t vfat /dev/ram0 /mnt
+
+       nsh> ls /mnt
+       /mnt:
+        TEST.TXT
+
+       nsh> cat /mnt/TEST.TXT
+       Testing
+
   nxlines:
   ------
     An example using the NuttX graphics system (NX).   This example focuses on
@@ -1649,6 +1751,7 @@ Where <subdir> is one of the following:
 
      -CONFIG_NX_DISABLE_1BPP=y
      +CONFIG_NX_DISABLE_16BPP=y
+     +CONFIG_NXSTART_EXTERNINIT=y
 
      -CONFIG_EXAMPLES_NXLINES_BGCOLOR=0x0320
      -CONFIG_EXAMPLES_NXLINES_LINEWIDTH=16

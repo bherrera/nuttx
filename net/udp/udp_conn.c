@@ -1,7 +1,8 @@
 /****************************************************************************
  * net/udp/udp_conn.c
  *
- *   Copyright (C) 2007-2009, 2011-2012, 2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2009, 2011-2012, 2016, 2018 Gregory Nutt. All rights
+ *     reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Large parts of this file were leveraged from uIP logic:
@@ -45,7 +46,6 @@
 
 #include <stdint.h>
 #include <string.h>
-#include <semaphore.h>
 #include <assert.h>
 #include <errno.h>
 #include <debug.h>
@@ -54,6 +54,7 @@
 
 #include <arch/irq.h>
 
+#include <nuttx/semaphore.h>
 #include <nuttx/net/netconfig.h>
 #include <nuttx/net/net.h>
 #include <nuttx/net/netdev.h>
@@ -123,7 +124,7 @@ static inline void _udp_semtake(FAR sem_t *sem)
   UNUSED(ret);
 }
 
-#define _udp_semgive(sem) sem_post(sem)
+#define _udp_semgive(sem) nxsem_post(sem)
 
 /****************************************************************************
  * Name: udp_find_conn()
@@ -202,7 +203,7 @@ static FAR struct udp_conn_s *udp_find_conn(uint8_t domain,
  * Input Parameters:
  *   None
  *
- * Return:
+ * Returned Value:
  *   Next available port number
  *
  ****************************************************************************/
@@ -445,7 +446,7 @@ void udp_initialize(void)
 
   dq_init(&g_free_udp_connections);
   dq_init(&g_active_udp_connections);
-  sem_init(&g_free_sem, 0, 1);
+  nxsem_init(&g_free_sem, 0, 1);
 
   for (i = 0; i < CONFIG_NET_UDP_CONNS; i++)
     {
@@ -485,6 +486,11 @@ FAR struct udp_conn_s *udp_alloc(uint8_t domain)
       conn->lport  = 0;
       conn->ttl    = IP_TTL;
 
+#ifdef CONFIG_NET_TCP_WRITE_BUFFERS
+      /* Initialize the write buffer lists */
+
+      sq_init(&conn->write_q);
+#endif
       /* Enqueue the connection into the active list */
 
       dq_addlast(&conn->node, &g_active_udp_connections);
@@ -505,6 +511,10 @@ FAR struct udp_conn_s *udp_alloc(uint8_t domain)
 
 void udp_free(FAR struct udp_conn_s *conn)
 {
+#ifdef CONFIG_NET_UDP_WRITE_BUFFERS
+  FAR struct udp_wrbuffer_s *wrbuffer;
+#endif
+
   /* The free list is protected by a semaphore (that behaves like a mutex). */
 
   DEBUGASSERT(conn->crefs == 0);
@@ -520,6 +530,15 @@ void udp_free(FAR struct udp_conn_s *conn)
   /* Release any read-ahead buffers attached to the connection */
 
   iob_free_queue(&conn->readahead);
+#endif
+
+#ifdef CONFIG_NET_UDP_WRITE_BUFFERS
+  /* Release any write buffers attached to the connection */
+
+  while ((wrbuffer = (struct udp_wrbuffer_s *)sq_remfirst(&conn->write_q)) != NULL)
+    {
+      udp_wrbuffer_release(wrbuffer);
+    }
 #endif
 
   /* Free the connection */

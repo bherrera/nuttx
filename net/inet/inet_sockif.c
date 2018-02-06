@@ -50,6 +50,8 @@
 
 #include "tcp/tcp.h"
 #include "udp/udp.h"
+#include "icmp/icmp.h"
+#include "icmpv6/icmpv6.h"
 #include "sixlowpan/sixlowpan.h"
 #include "socket/socket.h"
 #include "inet/inet.h"
@@ -88,10 +90,10 @@ static ssize_t    inet_sendfile(FAR struct socket *psock, FAR struct file *infil
 #endif
 
 /****************************************************************************
- * Public Data
+ * Private Data
  ****************************************************************************/
 
-const struct sock_intf_s g_inet_sockif =
+static const struct sock_intf_s g_inet_sockif =
 {
   inet_setup,       /* si_setup */
   inet_sockcaps,    /* si_sockcaps */
@@ -284,6 +286,10 @@ static sockcaps_t inet_sockcaps(FAR struct socket *psock)
     {
 #ifdef NET_TCP_HAVE_STACK
       case SOCK_STREAM:
+        /* REVISIT:  Non-blocking recv() depends on CONFIG_NET_TCP_READAHEAD,
+         * but non-blocking send() depends on CONFIG_NET_TCP_WRITE_BUFFERS.
+         */
+
 #ifdef CONFIG_NET_TCP_READAHEAD
         return SOCKCAP_NONBLOCKING;
 #else
@@ -293,6 +299,10 @@ static sockcaps_t inet_sockcaps(FAR struct socket *psock)
 
 #ifdef NET_UDP_HAVE_STACK
       case SOCK_DGRAM:
+        /* REVISIT:  Non-blocking recvfrom() depends on CONFIG_NET_UDP_READAHEAD,
+         * but non-blocking sendto() depends on CONFIG_NET_UDP_WRITE_BUFFERS.
+         */
+
 #ifdef CONFIG_NET_UDP_READAHEAD
         return SOCKCAP_NONBLOCKING;
 #else
@@ -1144,7 +1154,7 @@ static ssize_t inet_sendto(FAR struct socket *psock, FAR const void *buf,
 #if defined(CONFIG_NET_6LOWPAN)
   /* Try 6LoWPAN UDP packet sendto() */
 
-  nsent = psock_6lowpan_udp_sendto(psock, buf, len, flags, to, tolen);
+  nsent = psock_6lowpan_udp_sendto(psock, buf, len, flags, to, minlen);
 
 #ifdef NET_UDP_HAVE_STACK
   if (nsent < 0)
@@ -1206,16 +1216,62 @@ static ssize_t inet_sendfile(FAR struct socket *psock,
  ****************************************************************************/
 
 /****************************************************************************
- * Name:
+ * Name: inet_sockif
  *
  * Description:
+ *   Return the socket interface associated with the inet address family.
  *
- * Parameters:
+ * Input Parameters:
+ *   family   - Socket address family
+ *   type     - Socket type
+ *   protocol - Socket protocol
  *
  * Returned Value:
- *
- * Assumptions:
+ *   On success, a non-NULL instance of struct sock_intf_s is returned.  NULL
+ *   is returned only if the address family is not supported.
  *
  ****************************************************************************/
+
+FAR const struct sock_intf_s *
+  inet_sockif(sa_family_t family, int type, int protocol)
+{
+  DEBUGASSERT(family == PF_INET || family == PF_INET6);
+
+#if defined(HAVE_PFINET_SOCKETS) && defined(CONFIG_NET_ICMP_SOCKET)
+  /* PF_INET, ICMP data gram sockets are a special case of raw sockets */
+
+  if (family == PF_INET && type == SOCK_DGRAM && protocol == IPPROTO_ICMP)
+    {
+      return &g_icmp_sockif;
+    }
+  else
+#endif
+#if defined(HAVE_PFINET6_SOCKETS) && defined(CONFIG_NET_ICMPv6_SOCKET)
+  /* PF_INET, ICMP data gram sockets are a special case of raw sockets */
+
+  if (family == PF_INET6 && type == SOCK_DGRAM && protocol == IPPROTO_ICMP6)
+    {
+      return &g_icmpv6_sockif;
+    }
+  else
+#endif
+#ifdef NET_UDP_HAVE_STACK
+  if (type == SOCK_DGRAM && (protocol == 0 || protocol == IPPROTO_UDP))
+    {
+      return &g_inet_sockif;
+    }
+  else
+#endif
+#ifdef NET_TCP_HAVE_STACK
+  if (type == SOCK_STREAM && (protocol == 0 || protocol == IPPROTO_TCP))
+    {
+      return &g_inet_sockif;
+    }
+  else
+#endif
+    {
+      return NULL;
+    }
+}
 
 #endif /* HAVE_INET_SOCKETS */

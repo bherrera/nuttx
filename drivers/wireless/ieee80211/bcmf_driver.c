@@ -137,29 +137,29 @@ FAR struct bcmf_dev_s *bcmf_allocate_device(void)
 
   /* Init control frames mutex and timeout signal */
 
-  if ((ret = sem_init(&priv->control_mutex, 0, 1)) != OK)
+  if ((ret = nxsem_init(&priv->control_mutex, 0, 1)) != OK)
     {
       goto exit_free_priv;
     }
 
-  if ((ret = sem_init(&priv->control_timeout, 0, 0)) != OK)
+  if ((ret = nxsem_init(&priv->control_timeout, 0, 0)) != OK)
     {
       goto exit_free_priv;
     }
 
-  if ((ret = sem_setprotocol(&priv->control_timeout, SEM_PRIO_NONE)) != OK)
+  if ((ret = nxsem_setprotocol(&priv->control_timeout, SEM_PRIO_NONE)) != OK)
     {
       goto exit_free_priv;
     }
 
   /* Init authentication signal semaphore */
 
-  if ((ret = sem_init(&priv->auth_signal, 0, 0)) != OK)
+  if ((ret = nxsem_init(&priv->auth_signal, 0, 0)) != OK)
     {
       goto exit_free_priv;
     }
 
-  if ((ret = sem_setprotocol(&priv->auth_signal, SEM_PRIO_NONE)) != OK)
+  if ((ret = nxsem_setprotocol(&priv->auth_signal, SEM_PRIO_NONE)) != OK)
     {
       goto exit_free_priv;
     }
@@ -370,7 +370,7 @@ void bcmf_wl_auth_event_handler(FAR struct bcmf_dev_s *priv,
 
       priv->auth_status = OK;
 
-      sem_post(&priv->auth_signal);
+      nxsem_post(&priv->auth_signal);
     }
 }
 
@@ -687,7 +687,7 @@ wl_escan_result_processed:
   wd_cancel(priv->scan_timeout);
 
   priv->scan_status = BCMF_SCAN_DONE;
-  sem_post(&priv->control_mutex);
+  nxsem_post(&priv->control_mutex);
 
   return;
 
@@ -710,7 +710,7 @@ void bcmf_wl_scan_timeout(int argc, wdparm_t arg1, ...)
   wlerr("Scan timeout detected\n");
 
   priv->scan_status = BCMF_SCAN_TIMEOUT;
-  sem_post(&priv->control_mutex);
+  nxsem_post(&priv->control_mutex);
 }
 
 int bcmf_wl_get_interface(FAR struct bcmf_dev_s *priv, struct iwreq *iwr)
@@ -851,7 +851,7 @@ int bcmf_wl_start_scan(FAR struct bcmf_dev_s *priv, struct iwreq *iwr)
 
   /* Lock control_mutex semaphore */
 
-  if ((ret = sem_wait(&priv->control_mutex)) != OK)
+  if ((ret = nxsem_wait(&priv->control_mutex)) < 0)
     {
        goto exit_failed;
     }
@@ -886,14 +886,15 @@ int bcmf_wl_start_scan(FAR struct bcmf_dev_s *priv, struct iwreq *iwr)
 
   /*  Start scan_timeout timer */
 
-  wd_start(priv->scan_timeout, BCMF_SCAN_TIMEOUT_TICK,
-           bcmf_wl_scan_timeout, (wdparm_t)priv);
+  (void)wd_start(priv->scan_timeout, BCMF_SCAN_TIMEOUT_TICK,
+                 bcmf_wl_scan_timeout, (wdparm_t)priv);
 
   return OK;
 
 exit_sem_post:
   priv->scan_status = BCMF_SCAN_DISABLED;
-  sem_post(&priv->control_mutex);
+  nxsem_post(&priv->control_mutex);
+
 exit_failed:
   wlinfo("Failed\n");
   return ret;
@@ -917,11 +918,10 @@ int bcmf_wl_get_scan_results(FAR struct bcmf_dev_s *priv, struct iwreq *iwr)
 
   /* Lock control_mutex semaphore to avoid race condition */
 
-  if ((ret = sem_wait(&priv->control_mutex)) != OK)
-   {
-      ret = -EIO;
+  if ((ret = nxsem_wait(&priv->control_mutex)) < 0)
+    {
       goto exit_failed;
-   }
+    }
 
   if (!priv->scan_result)
     {
@@ -967,13 +967,14 @@ exit_free_buffer:
   priv->scan_result_size = 0;
 
 exit_sem_post:
-  sem_post(&priv->control_mutex);
+  nxsem_post(&priv->control_mutex);
 
 exit_failed:
-  if (ret)
+  if (ret < 0)
     {
       iwr->u.data.length = 0;
     }
+
   return ret;
 }
 
@@ -1187,10 +1188,10 @@ int bcmf_wl_set_ssid(FAR struct bcmf_dev_s *priv, struct iwreq *iwr)
 
   wlinfo("semwait done ! %d\n", ret);
 
-  if (ret)
+  if (ret < 0)
     {
       wlerr("Associate request timeout\n");
-      return -EINVAL;
+      return ret;
     }
 
   switch (priv->auth_status)
@@ -1203,5 +1204,6 @@ int bcmf_wl_set_ssid(FAR struct bcmf_dev_s *priv, struct iwreq *iwr)
         wlerr("AP join failed %d\n", priv->auth_status);
         return -EINVAL;
     }
+
   return OK;
  }

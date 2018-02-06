@@ -166,16 +166,21 @@ const struct mountpt_operations hostfs_operations =
 
 void hostfs_semtake(FAR struct hostfs_mountpt_s *fs)
 {
-  /* Take the semaphore (perhaps waiting) */
+  int ret;
 
-  while (sem_wait(fs->fs_sem) != 0)
+  do
     {
-      /* The only case that an error should occur here is if
-       * the wait was awakened by a signal.
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(fs->fs_sem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
        */
 
-      ASSERT(*get_errno_ptr() == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -184,7 +189,7 @@ void hostfs_semtake(FAR struct hostfs_mountpt_s *fs)
 
 void hostfs_semgive(FAR struct hostfs_mountpt_s *fs)
 {
-  sem_post(fs->fs_sem);
+  nxsem_post(fs->fs_sem);
 }
 
 /****************************************************************************
@@ -874,7 +879,7 @@ static int hostfs_bind(FAR struct inode *blkdriver, FAR const void *data,
     {
       /* Initialize the semaphore that controls access */
 
-      sem_init(&g_sem, 0, 0);
+      nxsem_init(&g_sem, 0, 0);
       g_seminitialized = TRUE;
     }
   else

@@ -336,7 +336,7 @@ errout:
  *
  *    Locates the first config entry, even if it is empty.
  *
- * Returns:
+ * Returned Value:
  *     offset to the start of the entry.
  *
  ****************************************************************************/
@@ -435,7 +435,7 @@ static int  mtdconfig_findfirstentry(FAR struct mtdconfig_struct_s *dev,
  *
  *    Locates the next config entry starting at offset, even if it is empty.
  *
- * Returns:
+ * Returned Value:
  *     offset to the start of the next entry.
  *
  ****************************************************************************/
@@ -562,7 +562,7 @@ read_next:
  *    method of consolidation is used when only a single erase
  *    block is available in the partition.
  *
- * Returns:
+ * Returned Value:
  *     offset to the next available entry (after consolidation)..
  *
  ****************************************************************************/
@@ -719,7 +719,7 @@ errout:
  *    erased block.  It erases all blocks to the end of the
  *    partition as it goes.
  *
- * Returns:
+ * Returned Value:
  *     offset to the next available entry (after consolidation)..
  *
  ****************************************************************************/
@@ -934,10 +934,11 @@ static int  mtdconfig_open(FAR struct file *filep)
 
   /* Get exclusive access to the device */
 
-  ret = sem_wait(&dev->exclsem);
+  ret = nxsem_wait(&dev->exclsem);
   if (ret < 0)
     {
-      ret = -errno;
+      ferr("ERROR: nxsem_wait failed: %d\n", ret);
+      DEBUGASSERT(ret == -EINTR);
       goto errout;
     }
 
@@ -958,7 +959,7 @@ static int  mtdconfig_close(FAR struct file *filep)
 
   /* Release exclusive access to the device */
 
-  sem_post(&dev->exclsem);
+  nxsem_post(&dev->exclsem);
   return OK;
 }
 
@@ -1015,7 +1016,8 @@ static int mtdconfig_findentry(FAR struct mtdconfig_struct_s *dev,
     }
 #endif
 
-  while (offset > 0 && (pdata->id != phdr->id || pdata->instance != phdr->instance))
+  while (offset > 0 && (pdata->id != phdr->id ||
+         pdata->instance != phdr->instance))
     {
       if (phdr->id == MTD_ERASED_ID)
         {
@@ -1362,7 +1364,7 @@ static int mtdconfig_poll(FAR struct file *filep, FAR struct pollfd *fds,
       fds->revents |= (fds->events & (POLLIN | POLLOUT));
       if (fds->revents != 0)
         {
-          sem_post(fds->sem);
+          nxsem_post(fds->sem);
         }
     }
 
@@ -1394,7 +1396,7 @@ int mtdconfig_register(FAR struct mtd_dev_s *mtd)
       /* Initialize the mtdconfig device structure */
 
       dev->mtd = mtd;
-      sem_init(&dev->exclsem, 0, 1);
+      nxsem_init(&dev->exclsem, 0, 1);
 
       /* Get the device geometry. (casting to uintptr_t first eliminates
        * complaints on some architectures where the sizeof long is different

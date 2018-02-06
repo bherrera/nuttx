@@ -1,7 +1,7 @@
 /****************************************************************************
  * libnx/nxmu/nx_getrectangle.c
  *
- *   Copyright (C) 2011-2013, 2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2011-2013, 2016-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,11 +43,10 @@
 #include <errno.h>
 #include <debug.h>
 
+#include <nuttx/semaphore.h>
 #include <nuttx/nx/nx.h>
 #include <nuttx/nx/nxbe.h>
 #include <nuttx/nx/nxmu.h>
-
-#include <nuttx/semaphore.h>
 
 /****************************************************************************
  * Public Functions
@@ -69,7 +68,7 @@
  *   dest - The location to copy the memory region
  *   deststride - The width, in bytes, of the dest memory
  *
- * Return:
+ * Returned Value:
  *   OK on success; ERROR on failure with errno set appropriately
  *
  ****************************************************************************/
@@ -105,11 +104,11 @@ int nx_getrectangle(NXWINDOW hwnd, FAR const struct nxgl_rect_s *rect,
   /* Create a semaphore for tracking command completion */
 
   outmsg.sem_done = &sem_done;
-  ret = sem_init(&sem_done, 0, 0);
 
-  if (ret != OK)
+  ret = _SEM_INIT(&sem_done, 0, 0);
+  if (ret < 0)
     {
-      gerr("ERROR: sem_init failed: %d\n", errno);
+      gerr("ERROR: _SEM_INIT failed: %d\n", _SEM_ERRNO(ret));
       return ret;
     }
 
@@ -117,7 +116,7 @@ int nx_getrectangle(NXWINDOW hwnd, FAR const struct nxgl_rect_s *rect,
    * priority inheritance enabled.
    */
 
-  (void)sem_setprotocol(&sem_done, SEM_PRIO_NONE);
+  (void)nxsem_setprotocol(&sem_done, SEM_PRIO_NONE);
 
   /* Forward the fill command to the server */
 
@@ -127,12 +126,12 @@ int nx_getrectangle(NXWINDOW hwnd, FAR const struct nxgl_rect_s *rect,
 
   if (ret == OK)
     {
-      ret = sem_wait(&sem_done);
+      ret = _SEM_WAIT(&sem_done);
     }
 
   /* Destroy the semaphore and return. */
 
-  sem_destroy(&sem_done);
+  _SEM_DESTROY(&sem_done);
 
   return ret;
 }

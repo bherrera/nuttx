@@ -73,4 +73,3 @@ FAR sq_entry_t *sq_remafter(FAR sq_entry_t *node, sq_queue_t *queue)
 
   return ret;
 }
-

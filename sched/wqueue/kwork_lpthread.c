@@ -84,7 +84,7 @@ struct lp_wqueue_s g_lpwork;
  *   bring up.  This entry point is referenced by OS internally and should
  *   not be accessed by application logic.
  *
- * Input parameters:
+ * Input Parameters:
  *   argc, argv (not used)
  *
  * Returned Value:
@@ -168,7 +168,7 @@ static int work_lpthread(int argc, char *argv[])
  * Description:
  *   Start the low-priority, kernel-mode worker thread(s)
  *
- * Input parameters:
+ * Input Parameters:
  *   None
  *
  * Returned Value:
@@ -201,20 +201,17 @@ int work_lpstart(void)
 
   for (wndx = 0; wndx < CONFIG_SCHED_LPNTHREADS; wndx++)
     {
-      pid = kernel_thread(LPWORKNAME, CONFIG_SCHED_LPWORKPRIORITY,
-                          CONFIG_SCHED_LPWORKSTACKSIZE,
-                          (main_t)work_lpthread,
-                          (FAR char * const *)NULL);
+      pid = kthread_create(LPWORKNAME, CONFIG_SCHED_LPWORKPRIORITY,
+                           CONFIG_SCHED_LPWORKSTACKSIZE,
+                           (main_t)work_lpthread,
+                           (FAR char * const *)NULL);
 
       DEBUGASSERT(pid > 0);
       if (pid < 0)
         {
-          int errcode = errno;
-          DEBUGASSERT(errcode > 0);
-
-          serr("ERROR: kernel_thread %d failed: %d\n", wndx, errcode);
+          serr("ERROR: kthread_create %d failed: %d\n", wndx, (int)pid);
           sched_unlock();
-          return -errcode;
+          return (int)pid;
         }
 
       g_lpwork.worker[wndx].pid  = pid;

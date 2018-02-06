@@ -97,10 +97,7 @@ int stm32l4_pmstop(bool lpds);
  *
  ****************************************************************************/
 
-#if defined(CONFIG_STM32L4_STM32L4X3) || defined(CONFIG_STM32L4_STM32L4X5) || \
-    defined(CONFIG_STM32L4_STM32L4X6)
 int stm32l4_pmstop2(void);
-#endif
 
 /****************************************************************************
  * Name: stm32l4_pmstandby
@@ -111,7 +108,7 @@ int stm32l4_pmstop2(void);
  * Input Parameters:
  *   None
  *
- * Returned Value.
+ * Returned Value:
  *   On success, this function will not return (STANDBY mode can only be
  *   terminated with a reset event).  Otherwise, STANDBY mode did not occur
  *   and a negated errno value is returned to indicate the cause of the
@@ -159,10 +156,7 @@ void stm32l4_pmsleep(bool sleeponexit);
  *
  ****************************************************************************/
 
-#if defined(CONFIG_STM32L4_STM32L4X3) || defined(CONFIG_STM32L4_STM32L4X5) || \
-    defined(CONFIG_STM32L4_STM32L4X6)
 int stm32l4_pmlpr(void);
-#endif
 
 #undef EXTERN
 #ifdef __cplusplus

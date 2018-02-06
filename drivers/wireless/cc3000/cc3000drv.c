@@ -54,6 +54,8 @@
 #include <fcntl.h>
 #include "cc3000drv.h"
 
+#include <nuttx/mqueue.h>
+#include <nuttx/fs/fs.h>
 #include <nuttx/wireless/cc3000.h>
 #include <nuttx/wireless/cc3000/cc3000_common.h>
 
@@ -97,7 +99,7 @@ static struct
 void cc3000_resume(void)
 {
   DEBUGASSERT(spiconf.cc3000fd >= 0 && spiconf.done);
-  sem_post(spiconf.done);
+  nxsem_post(spiconf.done);
   ninfo("Done\n");
 }
 
@@ -117,8 +119,12 @@ void cc3000_resume(void)
 
 long cc3000_write(uint8_t *pUserBuffer, uint16_t usLength)
 {
+  ssize_t ret;
+
   DEBUGASSERT(spiconf.cc3000fd >= 0);
-  return write(spiconf.cc3000fd, pUserBuffer, usLength) == usLength ? 0 : -errno;
+
+  ret = nx_write(spiconf.cc3000fd, pUserBuffer, usLength);
+  return ret >= 0 ? 0 : ret;
 }
 
 /****************************************************************************
@@ -139,7 +145,7 @@ long cc3000_write(uint8_t *pUserBuffer, uint16_t usLength)
 long cc3000_read(uint8_t *pUserBuffer, uint16_t usLength)
 {
   DEBUGASSERT(spiconf.cc3000fd >= 0);
-  return read(spiconf.cc3000fd, pUserBuffer, usLength);
+  return nx_read(spiconf.cc3000fd, pUserBuffer, usLength);
 }
 
 /****************************************************************************
@@ -159,8 +165,8 @@ uint8_t *cc3000_wait(void)
 {
   DEBUGASSERT(spiconf.cc3000fd >= 0);
 
-  mq_receive(spiconf.queue, (FAR char *)&spiconf.rx_buffer,
-             sizeof(spiconf.rx_buffer), 0);
+  (void)nxmq_receive(spiconf.queue, (FAR char *)&spiconf.rx_buffer,
+                     sizeof(spiconf.rx_buffer), 0);
   return spiconf.rx_buffer.pbuffer;
 }
 
@@ -194,13 +200,13 @@ static void *unsoliced_thread_func(void *parameter)
   spiconf.done = sem_open(buff, O_RDONLY);
   DEBUGASSERT(spiconf.done != SEM_FAILED);
 
-  sem_post(&spiconf.unsoliced_thread_wakesem);
+  nxsem_post(&spiconf.unsoliced_thread_wakesem);
 
   while (spiconf.run)
     {
       memset(&spiconf.rx_buffer, 0, sizeof(spiconf.rx_buffer));
-      nbytes = mq_receive(spiconf.queue, (FAR char *)&spiconf.rx_buffer,
-                          sizeof(spiconf.rx_buffer), 0);
+      nbytes = nxmq_receive(spiconf.queue, (FAR char *)&spiconf.rx_buffer,
+                            sizeof(spiconf.rx_buffer), 0);
       if (nbytes > 0)
         {
           ninfo("%d Processed\n", nbytes);
@@ -231,6 +237,7 @@ static void *unsoliced_thread_func(void *parameter)
 void cc3000_open(gcSpiHandleRx pfRxHandler)
 {
   int status;
+  int ret;
   int fd;
 
   DEBUGASSERT(spiconf.cc3000fd == -1);
@@ -242,7 +249,7 @@ void cc3000_open(gcSpiHandleRx pfRxHandler)
       spiconf.cc3000fd = fd;
       spiconf.run = true;
 
-      sem_init(&spiconf.unsoliced_thread_wakesem, 0, 0);
+      nxsem_init(&spiconf.unsoliced_thread_wakesem, 0, 0);
 
       pthread_attr_t attr;
       struct sched_param param;
@@ -257,10 +264,17 @@ void cc3000_open(gcSpiHandleRx pfRxHandler)
 
       /* Wait unsoliced_thread to wake-up. */
 
-      while (sem_wait(&spiconf.unsoliced_thread_wakesem) != 0)
+      do
         {
-          ASSERT(errno == EINTR);
+          ret = nxsem_wait(&spiconf.unsoliced_thread_wakesem);
+
+          /* The only case that an error should occur here is if the wait
+           * was awakened by a signal.
+           */
+
+          DEBUGASSERT(ret == OK || ret == -EINTR);
         }
+      while (ret == -EINTR);
    }
 
   DEBUGASSERT(spiconf.cc3000fd >= 0);

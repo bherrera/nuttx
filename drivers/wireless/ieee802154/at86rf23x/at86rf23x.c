@@ -1380,7 +1380,7 @@ static void at86rf23x_irqwork_rx(FAR struct at86rf23x_dev_s *dev)
   dev->ieee.rxbuf->lqi = 0;
   dev->ieee.rxbuf->rssi = 0;
 
-  sem_post(&dev->ieee.rxsem);
+  nxsem_post(&dev->ieee.rxsem);
 
   /* TODO:
    *   Not to sure yet what I should do here.  I will something
@@ -1413,7 +1413,7 @@ static void at86rf23x_irqwork_tx(FAR struct at86rf23x_dev_s *dev)
 
   dev->lower->enable(dev->lower, true);
 
-  sem_post(&dev->ieee.txsem);
+  nxsem_post(&dev->ieee.txsem);
 }
 
 /****************************************************************************
@@ -1450,7 +1450,7 @@ static int at86rf23x_transmit(FAR struct ieee802154_radio_s *ieee,
 
   /* Put the thread that requested transfer to a waiting state */
 
-  sem_wait(&dev->ieee.txsem);
+  nxsem_wait(&dev->ieee.txsem);
 
   /* TODO Verify that I want to stay in the PLL state or if I want to roll
    * back to RX_ON.
@@ -1492,8 +1492,8 @@ FAR struct ieee802154_radio_s *at86rf23x_init(FAR struct spi_dev_s *spi,
       return NULL;
     }
 
-  sem_init(&dev->ieee.rxsem, 0, 0);
-  sem_init(&dev->ieee.txsem, 0, 0);
+  nxsem_init(&dev->ieee.rxsem, 0, 0);
+  nxsem_init(&dev->ieee.txsem, 0, 0);
 
   /* Initialize device */
 

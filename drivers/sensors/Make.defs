@@ -49,6 +49,10 @@ endif
 
 ifeq ($(CONFIG_I2C),y)
 
+ifeq ($(CONFIG_SENSORS_APDS9960),y)
+  CSRCS += apds9960.c
+endif
+
 ifeq ($(CONFIG_SENSORS_AS5048B),y)
   CSRCS += as5048b.c
 endif
@@ -101,6 +105,10 @@ ifeq ($(CONFIG_SENSORS_LM92),y)
   CSRCS += lm92.c
 endif
 
+ifeq ($(CONFIG_SENSORS_MAX44009),y)
+  CSRCS += max44009.c
+endif
+
 ifeq ($(CONFIG_SENSORS_MB7040),y)
   CSRCS += mb7040.c
 endif
@@ -119,6 +127,10 @@ endif
 
 ifeq ($(CONFIG_SENSORS_LTC4151),y)
   CSRCS += ltc4151.c
+endif
+
+ifeq ($(CONFIG_SENSORS_INA219),y)
+  CSRCS += ina219.c
 endif
 
 endif # CONFIG_I2C

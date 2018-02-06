@@ -45,6 +45,7 @@
 #include <debug.h>
 
 #include <nuttx/kmalloc.h>
+#include <nuttx/signal.h>
 #include <nuttx/ascii.h>
 #include <nuttx/fs/fs.h>
 #include <nuttx/lcd/slcd_codec.h>
@@ -551,7 +552,7 @@ static void lcd_init(FAR struct pcf8574_lcd_dev_s *priv)
 {
   /* Wait for more than 15 ms after Vcc for the LCD to stabilize */
 
-  usleep(50000);
+  nxsig_usleep(50000);
 
   /* Perform the init sequence.  This sequence of commands is constructed so
    * that it will get the device into nybble mode irrespective of what state
@@ -564,22 +565,22 @@ static void lcd_init(FAR struct pcf8574_lcd_dev_s *priv)
   /* Send Command 0x30, set 8-bit mode, and wait > 4.1 ms */
 
   latch_nybble(priv, 0x30>>4, false);
-  usleep(5000);
+  nxsig_usleep(5000);
 
   /* Send Command 0x30, set 8-bit mode, and wait > 100 us */
 
   latch_nybble(priv, 0x30>>4, false);
-  usleep(5000);
+  nxsig_usleep(5000);
 
   /* Send Command 0x30, set 8-bit mode */
 
   latch_nybble(priv, 0x30>>4, false);
-  usleep(200);
+  nxsig_usleep(200);
 
   /* now Function set: Set interface to be 4 bits long (only 1 cycle write for the first time). */
 
   latch_nybble(priv, 0x20>>4, false);
-  usleep(5000);
+  nxsig_usleep(5000);
 
   /* Function set: DL=0;Interface is 4 bits, N=1 (2 Lines), F=0 (5x8 dots font) */
 
@@ -1065,7 +1066,7 @@ static int pcf8574_lcd_open(FAR struct file *filep)
 
   /* Increment the reference count */
 
-  sem_wait(&priv->sem_excl);
+  nxsem_wait(&priv->sem_excl);
   if (priv->refs == MAX_OPENCNT)
     {
       return -EMFILE;
@@ -1075,7 +1076,7 @@ static int pcf8574_lcd_open(FAR struct file *filep)
       priv->refs++;
     }
 
-  sem_post(&priv->sem_excl);
+  nxsem_post(&priv->sem_excl);
   return OK;
 }
 
@@ -1095,7 +1096,7 @@ static int pcf8574_lcd_close(FAR struct file *filep)
 
   /* Decrement the reference count */
 
-  sem_wait(&priv->sem_excl);
+  nxsem_wait(&priv->sem_excl);
 
   if (priv->refs == 0)
     {
@@ -1116,7 +1117,7 @@ static int pcf8574_lcd_close(FAR struct file *filep)
       ret = OK;
     }
 
-  sem_post(&priv->sem_excl);
+  nxsem_post(&priv->sem_excl);
   return ret;
 }
 
@@ -1141,7 +1142,7 @@ static ssize_t pcf8574_lcd_read(FAR struct file *filep, FAR char *buffer,
   uint8_t col;
   bool onlf;
 
-  sem_wait(&priv->sem_excl);
+  nxsem_wait(&priv->sem_excl);
 
   /* Get current cursor position so we can restore it */
 
@@ -1198,7 +1199,7 @@ static ssize_t pcf8574_lcd_read(FAR struct file *filep, FAR char *buffer,
 
   lcd_putcmd(priv, CMD_SET_DDADDR | addr);            /* Restore DDRAM address */
 
-  sem_post(&priv->sem_excl);
+  nxsem_post(&priv->sem_excl);
   return nIdx;
 }
 
@@ -1224,7 +1225,7 @@ static ssize_t pcf8574_lcd_write(FAR struct file *filep,
   uint8_t ch;
   uint8_t count;
 
-  sem_wait(&priv->sem_excl);
+  nxsem_wait(&priv->sem_excl);
 
   /* Initialize the stream for use with the SLCD CODEC */
 
@@ -1350,7 +1351,7 @@ static ssize_t pcf8574_lcd_write(FAR struct file *filep,
 
   lcd_curpos_to_fpos(priv, row, col, &filep->f_pos);
 
-  sem_post(&priv->sem_excl);
+  nxsem_post(&priv->sem_excl);
   return buflen;
 }
 
@@ -1372,7 +1373,7 @@ static off_t pcf8574_lcd_seek(FAR struct file *filep, off_t offset, int whence)
   FAR struct pcf8574_lcd_dev_s *priv = (FAR struct pcf8574_lcd_dev_s *)inode->i_private;
   int maxpos;
 
-  sem_wait(&priv->sem_excl);
+  nxsem_wait(&priv->sem_excl);
 
   maxpos = priv->cfg.rows * priv->cfg.cols + (priv->cfg.rows - 1);
   switch (whence)
@@ -1398,7 +1399,7 @@ static off_t pcf8574_lcd_seek(FAR struct file *filep, off_t offset, int whence)
       filep->f_pos = -EINVAL;
     }
 
-  sem_post(&priv->sem_excl);
+  nxsem_post(&priv->sem_excl);
   return filep->f_pos;
 }
 
@@ -1444,13 +1445,13 @@ static int pcf8574_lcd_ioctl(FAR struct file *filep, int cmd,
           uint8_t row;
           uint8_t col;
 
-          sem_wait(&priv->sem_excl);
+          nxsem_wait(&priv->sem_excl);
 
           lcd_get_curpos(priv, &row, &col);
           attr->row = row;
           attr->column = col;
 
-          sem_post(&priv->sem_excl);
+          nxsem_post(&priv->sem_excl);
         }
         break;
 
@@ -1470,9 +1471,9 @@ static int pcf8574_lcd_ioctl(FAR struct file *filep, int cmd,
           FAR struct inode *inode = filep->f_inode;
           FAR struct pcf8574_lcd_dev_s *priv = (FAR struct pcf8574_lcd_dev_s *)inode->i_private;
 
-          sem_wait(&priv->sem_excl);
+          nxsem_wait(&priv->sem_excl);
           lcd_backlight(priv, arg ? true : false);
-          sem_post(&priv->sem_excl);
+          nxsem_post(&priv->sem_excl);
         }
         break;
 
@@ -1482,9 +1483,9 @@ static int pcf8574_lcd_ioctl(FAR struct file *filep, int cmd,
           FAR struct pcf8574_lcd_dev_s *priv = (FAR struct pcf8574_lcd_dev_s *)inode->i_private;
           FAR struct slcd_createchar_s *attr = (FAR struct slcd_createchar_s *)((uintptr_t)arg);
 
-          sem_wait(&priv->sem_excl);
+          nxsem_wait(&priv->sem_excl);
           lcd_create_char(priv, attr->idx, attr->bmp);
-          sem_post(&priv->sem_excl);
+          nxsem_post(&priv->sem_excl);
         }
         break;
 
@@ -1513,7 +1514,7 @@ static int pcf8574lcd_poll(FAR struct file *filep, FAR struct pollfd *fds,
       fds->revents |= (fds->events & (POLLIN|POLLOUT));
       if (fds->revents != 0)
         {
-          sem_post(fds->sem);
+          nxsem_post(fds->sem);
         }
     }
 
@@ -1531,7 +1532,7 @@ static int pcf8574_lcd_unlink(FAR struct inode *inode)
   FAR struct pcf8574_lcd_dev_s *priv = (FAR struct pcf8574_lcd_dev_s *)inode->i_private;
   int ret = OK;
 
-  sem_wait(&priv->sem_excl);
+  nxsem_wait(&priv->sem_excl);
 
   priv->unlinked = true;
 
@@ -1542,7 +1543,7 @@ static int pcf8574_lcd_unlink(FAR struct inode *inode)
       ret = OK;
     }
 
-  sem_post(&priv->sem_excl);
+  nxsem_post(&priv->sem_excl);
   return ret;
 }
 #endif
@@ -1595,7 +1596,7 @@ int pcf8574_lcd_backpack_register(FAR const char *devpath,
   priv->bl_bit = priv->cfg.bl_active_high ? 0 : (1 << priv->cfg.bl);
   priv->refs = 0;
   priv->unlinked = false;
-  sem_init(&priv->sem_excl, 0, 1);
+  nxsem_init(&priv->sem_excl, 0, 1);
 
   /* Initialize */
 

@@ -3,11 +3,23 @@
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
 
+config SENSORS_APDS9960
+	bool "Avago APDS-9960 Gesture Sensor support"
+	default n
+	select I2C
+	---help---
+		Enable driver support for the Avago APDS-9960 gesture sensor.
+
+config APDS9960_I2C_FREQUENCY
+	int "APDS-9960 I2C frequency"
+	default 400000
+	depends on SENSORS_APDS9960
+
 config SENSORS_AS5048B
 	bool "AMS AS5048B Magnetic Rotary Encoder support"
 	default n
 	select I2C
-	select QENCODER
+	select SENSORS_QENCODER
 	---help---
 		Enable driver support for the AMS AS5048B magnetic rotary encoder.
 
@@ -206,6 +218,18 @@ config LTC4151_I2C_FREQUENCY
 	default 400000
 	depends on SENSORS_LTC4151
 
+config SENSORS_INA219
+	bool "INA219 current and voltage monitor"
+	default n
+	select I2C
+	---help---
+		Enable driver support for the Texas Instruments INA219 current and voltage monitor.
+
+config INA219_I2C_FREQUENCY
+	int "INA219 I2C frequency"
+	default 400000
+	depends on SENSORS_INA219
+
 config SENSORS_MB7040
 	bool "MaxBotix MB7040 Sonar support"
 	default n
@@ -313,6 +337,34 @@ config ADXL345_REGDEBUG
 		Enable very low register-level debug output.
 
 endif # SENSORS_ADXL345
+
+config SENSORS_MAX44009
+	bool "Maxim MAX44009 ALS sensor"
+	default n
+	select I2C
+	---help---
+		Enables MAX44009 Ambient Light Sensor
+
+if SENSORS_MAX44009
+
+config MAX44009_I2C_FREQUENCY
+	int "MAX44009 I2C frequency"
+	default 400000
+	range 1 400000
+
+config DEBUG_MAX44009
+	bool "Enable debug support for the MAX44009"
+	default n
+	---help---
+		Enables debug support for the MAX44009
+
+config MAX44009_NPOLLWAITERS
+	int "Number of waiters to poll"
+	default 1
+	---help---
+		Number of waiters to poll
+
+endif # SENSORS_MAX44009
 
 config SENSORS_MAX31855
 	bool "Maxim MAX31855 Driver"

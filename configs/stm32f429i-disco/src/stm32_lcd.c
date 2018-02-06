@@ -47,7 +47,6 @@
 #include <nuttx/lcd/ili9341.h>
 #include <nuttx/video/fb.h>
 
-#include <arch/chip/ltdc.h>
 #include <arch/board/board.h>
 
 #include "up_arch.h"
@@ -421,7 +420,7 @@ static int stm32_ili9341_initialize(void)
  *
  * Parameter:
  *
- * Return:
+ * Returned Value:
  *
  ************************************************************************************/
 
@@ -445,7 +444,7 @@ void board_lcd_uninitialize(void)
  * Parameter:
  *   lcddev - Number of the LDC Device.
  *
- * Return:
+ * Returned Value:
  *   Reference to the LCD object if exist otherwise NULL
  *
  ************************************************************************************/
@@ -470,7 +469,7 @@ FAR struct lcd_dev_s *board_lcd_getdev(int lcddev)
  *
  * Parameter:
  *
- * Return:
+ * Returned Value:
  *   On success - Ok
  *   On error   - Error Code
  *
@@ -502,7 +501,7 @@ int board_lcd_initialize(void)
             }
         }
 
-      return -errno;
+      return -ENODEV;
     }
 
   return OK;
@@ -516,7 +515,7 @@ int board_lcd_initialize(void)
  * Description:
  *   Initialize the framebuffer video hardware associated with the display.
  *
- * Input parameters:
+ * Input Parameters:
  *   display - In the case of hardware with multiple displays, this
  *     specifies the display.  Normally this is zero.
  *
@@ -556,7 +555,7 @@ int up_fbinitialize(int display)
  *   Return a a reference to the framebuffer object for the specified video
  *   plane of the specified plane.  Many OSDs support multiple planes of video.
  *
- * Input parameters:
+ * Input Parameters:
  *   display - In the case of hardware with multiple displays, this
  *     specifies the display.  Normally this is zero.
  *   vplane - Identifies the plane being queried.

@@ -1,7 +1,7 @@
 /****************************************************************************
  * drivers/power/pm_initialize.c
  *
- *   Copyright (C) 2011-2012 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2011-2012, 2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,6 +41,7 @@
 
 #include <semaphore.h>
 
+#include <nuttx/semaphore.h>
 #include <nuttx/power/pm.h>
 
 #include "pm.h"
@@ -69,10 +70,10 @@ struct pm_global_s g_pmglobals;
  *   other device drivers are initialize (since they may attempt to register
  *   with the power management subsystem).
  *
- * Input parameters:
+ * Input Parameters:
  *   None.
  *
- * Returned value:
+ * Returned Value:
  *    None.
  *
  ****************************************************************************/
@@ -86,7 +87,7 @@ void pm_initialize(void)
    */
 
   sq_init(&g_pmglobals.registry);
-  sem_init(&g_pmglobals.regsem, 0, 1);
+  nxsem_init(&g_pmglobals.regsem, 0, 1);
 }
 
 #endif /* CONFIG_PM */

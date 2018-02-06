@@ -316,14 +316,14 @@ static void kinetis_i2c_putreg(struct kinetis_i2cdev_s *priv, uint8_t value,
 
 static inline void kinetis_i2c_sem_init(FAR struct kinetis_i2cdev_s *priv)
 {
-  sem_init(&priv->mutex, 0, 1);
+  nxsem_init(&priv->mutex, 0, 1);
 
   /* This semaphore is used for signaling and, hence, should not have
    * priority inheritance enabled.
    */
 
-  sem_init(&priv->wait, 0, 0);
-  sem_setprotocol(&priv->wait, SEM_PRIO_NONE);
+  nxsem_init(&priv->wait, 0, 0);
+  nxsem_setprotocol(&priv->wait, SEM_PRIO_NONE);
 }
 
 /************************************************************************************
@@ -336,8 +336,8 @@ static inline void kinetis_i2c_sem_init(FAR struct kinetis_i2cdev_s *priv)
 
 static inline void kinetis_i2c_sem_destroy(FAR struct kinetis_i2cdev_s *priv)
 {
-  sem_destroy(&priv->mutex);
-  sem_destroy(&priv->wait);
+  nxsem_destroy(&priv->mutex);
+  nxsem_destroy(&priv->wait);
 }
 
 /************************************************************************************
@@ -350,10 +350,21 @@ static inline void kinetis_i2c_sem_destroy(FAR struct kinetis_i2cdev_s *priv)
 
 static inline void kinetis_i2c_sem_wait(FAR struct kinetis_i2cdev_s *priv)
 {
-  while (sem_wait(&priv->mutex) != 0)
+  int ret;
+
+  do
     {
-      DEBUGASSERT(errno == EINTR);
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&priv->mutex);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
+       */
+
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /************************************************************************************
@@ -366,7 +377,7 @@ static inline void kinetis_i2c_sem_wait(FAR struct kinetis_i2cdev_s *priv)
 
 static inline void kinetis_i2c_sem_post(struct kinetis_i2cdev_s *priv)
 {
-  sem_post(&priv->mutex);
+  nxsem_post(&priv->mutex);
 }
 
 /************************************************************************************
@@ -379,7 +390,7 @@ static inline void kinetis_i2c_sem_post(struct kinetis_i2cdev_s *priv)
 
 static inline void kinetis_i2c_wait(struct kinetis_i2cdev_s *priv)
 {
-  sem_wait(&priv->wait);
+  (void)nxsem_wait(&priv->wait);
 }
 
 /************************************************************************************
@@ -392,7 +403,7 @@ static inline void kinetis_i2c_wait(struct kinetis_i2cdev_s *priv)
 
 static inline void kinetis_i2c_endwait(struct kinetis_i2cdev_s *priv)
 {
-  sem_post(&priv->wait);
+  nxsem_post(&priv->wait);
 }
 
 /************************************************************************************
@@ -1172,8 +1183,8 @@ static int kinetis_i2c_transfer(struct i2c_master_s *dev,
 
       /* Wait for transfer complete */
 
-      wd_start(priv->timeout, I2C_TIMEOUT, kinetis_i2c_timeout, 1,
-               (uint32_t) priv);
+      (void)wd_start(priv->timeout, I2C_TIMEOUT, kinetis_i2c_timeout, 1,
+                     (uint32_t)priv);
       kinetis_i2c_wait(priv);
 
       wd_cancel(priv->timeout);

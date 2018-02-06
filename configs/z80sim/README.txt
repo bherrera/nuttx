@@ -12,7 +12,7 @@ Contents
 
   o Configuring NuttX
   o Reconfiguring NuttX
-  o Reconfiguring for Linux, OSX, or Cygwin
+  o Reconfiguring for Windows Native, Cygwin, or OSX
   o SDCC
   o Building the SDCC toolchain
 
@@ -25,10 +25,23 @@ Configuring NuttX
     examples/ostest.  This can be configured as follows:
 
     1) From a POSIX window:
-       cd tools
-       ./configure.sh z80sim/ostest
+
+         tools/configure.sh [OPTIONS] z80sim/ostest
+
+       where you need to select the right [OPTIONS] for your build
+       environment.  Do:
+
+         tools/configure.sh -h
+
+       to see the options.
+
     2) Make sure that your PATH environment variable includes the path
        to the SDCC toolchain.
+
+
+    3) Then build the binaries:
+
+          make
 
     NOTES:
 
@@ -36,10 +49,10 @@ Configuring NuttX
        "Reconfiguring" section below for information about changing this
        configuration.
 
-    2. The default setup for this configuration uses a windows native build.
-       See the section entitled "Reconfiguring for Linux, OSX, or Cygwin"
-       which will give you the steps you would need to do to convert this
-       configuration to build in other, Unix-like environments.
+    2. The default setup for this configuration builds under Linux.
+       See the section entitled "Reconfiguring for Windows Native, Cygwin,
+       or OSX" which will give you the steps you would need to do to convert
+       this configuration to build in other environments.
 
     3. This configuration was last verified sucessfully prior to the
        the configure to Kconfig/mconf tool using SDCC 2.6.0 built to run
@@ -54,10 +67,23 @@ Configuring NuttX
     This configuration can be selected by:
 
     1) From a POSIX window:
-       cd tools
-       ./configure.sh z80sim/nsh
+
+         tools/configure.sh [OPTIONS] z80sim/nsh
+
+       where you need to select the right [OPTIONS] for your build
+       environment.  Do:
+
+         tools/configure.sh -h
+
+       to see the options.
+
     2) Set the PATH environment variable to include the path to the SDCC
        toolchain.
+
+
+    3) Then build the binaries:
+
+          make
 
     NOTES:
 
@@ -66,9 +92,9 @@ Configuring NuttX
        configuration.
 
     2. The default setup for this configuration uses a windows native build.
-       See the section entitled "Reconfiguring for Linux, OSX, or Cygwin"
-       which will give you the steps you would need to do to convert this
-       configuration to build in other, Unix-like environments.
+       See the section entitled "Reconfiguring for Windows Native, Cygwin,
+       or OSX" which will give you the steps you would need to do to convert
+       this configuration to build in other environments.
 
     3. This configuration was last verified sucessfully prior to the
        the configure to Kconfig/mconf tool using SDCC 2.6.0 built to run
@@ -85,10 +111,22 @@ Configuring NuttX
     This configuration can be selected by:
 
     1) From a POSIX window:
-       cd tools
-       ./configure.sh z80sim/pashello
+
+         tools/configure.sh [OPTIONS] z80sim/pashello
+
+       where you need to select the right [OPTIONS] for your build
+       environment.  Do:
+
+         tools/configure.sh -h
+
+       to see the options.
+
     2) Set the PATH environment variable to include the path to the SDCC
-       toolchain.
+       toolchain binaries.
+
+    3) Then build the binaries:
+
+          make
 
     NOTES:
 
@@ -97,9 +135,9 @@ Configuring NuttX
        configuration.
 
     2. The default setup for this configuration uses a windows native build.
-       See the section entitled "Reconfiguring for Linux, OSX, or Cygwin"
-       which will give you the steps you would need to do to convert this
-       configuration to build in other, Unix-like environments.
+       See the section entitled "Reconfiguring for Windows Native, Cygwin,
+       or OSX" which will give you the steps you would need to do to convert
+       this configuration to build in other environments.
 
     3. This configuration was last verified sucessfully prior to the
        the configure to Kconfig/mconf tool using SDCC 2.6.0 built to run
@@ -117,26 +155,25 @@ tool.  To change this configuration using that tool, you should:
   b. Execute 'make menuconfig' in nuttx/ in order to start the reconfiguration
      process.
 
-Reconfiguring for Linux, OSX, or Cygwin
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Reconfiguring for Windows Native, Cygwin, or OSX
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-All of the z80 configurations in this this directory are set up to build in a
-Windows CMD.exe shell.  This configuration requires the MinGW host compiler
-and severl GNUWin32 tools (see discussion in the top-level NuttX/README.txt
-file).
+All of the z80 configurations in this this directory are set up to build
+under Linux.  That configuration can be converted to run natively in a
+Windows CMD.exe shell.  That configuration requires the MinGW host compiler
+and several GNUWin32 tools (see discussion in the top-level NuttX/README.txt
+file) and the following changes to the configuation file:
 
-These configurations can be converted to run under Linux (or Cygwin or OSX),
-by modifying the configuration file as follows:
+  -CONFIG_HOST_LINUX=y
+  +CONFIG_HOST_WINDOWS=y
+  +CONFIG_WINDOWS_NATIVE=y
 
-  -CONFIG_HOST_WINDOWS=y
-  -CONFIG_WINDOWS_NATIVE=y
-  +CONFIG_HOST_LINUX=y
+  -CONFIG_Z80_TOOLCHAIN_SDCCL=y
+  +CONFIG_Z80_TOOLCHAIN_SDCCW=y
 
-  -CONFIG_Z80_TOOLCHAIN_SDCCW=y
-  +CONFIG_Z80_TOOLCHAIN_SDCCL=y
-
-You may need to first manually change the CONFIG_APPS_DIR="..\apps" definition
-in the .config file because the backslash may upset some Unix-based tools.
+You may need to first manually change the CONFIG_APPS_DIR="../apps"
+definition in the .config file because the forward slash may upset some
+Windows-based tools.
 
 This configuration will require a recent version of SDCC (ca. 3.2.1) for Linux
 or custom built for Cygwin (see below).
@@ -171,9 +208,14 @@ compatible with this build.  First start with the usual steps
   cd sdcc
   ./configure
 
+Note if you do not have the gputils packet installed, newer version of the
+SDCC configure will fail.  You will have to either install the gputils
+package or if you don't need PIC14 or PIC16 support:
+
+  ./configure --disable-pic14-port --disable-pic16-port
+
 Then make the SDCC binaries
 
-  cd sdcc
   make
 
 and install SDCC:

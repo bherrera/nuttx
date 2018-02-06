@@ -253,12 +253,13 @@ int bcmf_sdpcm_readframe(FAR struct bcmf_dev_s *priv)
 
         /* Queue frame and notify network layer frame is available */
 
-        if (sem_wait(&sbus->queue_mutex))
+        if (nxsem_wait(&sbus->queue_mutex) < 0)
           {
             PANIC();
           }
+
         bcmf_dqueue_push(&sbus->rx_queue, &sframe->list_entry);
-        sem_post(&sbus->queue_mutex);
+        nxsem_post(&sbus->queue_mutex);
 
         bcmf_netdev_notify_rx(priv);
 
@@ -306,7 +307,7 @@ int bcmf_sdpcm_sendframe(FAR struct bcmf_dev_s *priv)
     }
 
 
-  if (sem_wait(&sbus->queue_mutex))
+  if (nxsem_wait(&sbus->queue_mutex) < 0)
     {
       PANIC();
     }
@@ -336,7 +337,7 @@ int bcmf_sdpcm_sendframe(FAR struct bcmf_dev_s *priv)
   /* Frame sent, remove it from queue */
 
   bcmf_dqueue_pop_tail(&sbus->tx_queue);
-  sem_post(&sbus->queue_mutex);
+  nxsem_post(&sbus->queue_mutex);
   is_txframe = sframe->tx;
 
   /* Free frame buffer */
@@ -354,7 +355,7 @@ int bcmf_sdpcm_sendframe(FAR struct bcmf_dev_s *priv)
 
 exit_abort:
   // bcmf_sdpcm_txfail(sbus, false);
-  sem_post(&sbus->queue_mutex);
+  nxsem_post(&sbus->queue_mutex);
   return ret;
 }
 
@@ -383,18 +384,18 @@ int bcmf_sdpcm_queue_frame(FAR struct bcmf_dev_s *priv,
 
   /* Add frame in tx queue */
 
-  if (sem_wait(&sbus->queue_mutex))
+  if (nxsem_wait(&sbus->queue_mutex) < 0)
     {
       PANIC();
     }
 
   bcmf_dqueue_push(&sbus->tx_queue, &sframe->list_entry);
 
-  sem_post(&sbus->queue_mutex);
+  nxsem_post(&sbus->queue_mutex);
 
   /* Notify bcmf thread tx frame is ready */
 
-  sem_post(&sbus->thread_signal);
+  nxsem_post(&sbus->thread_signal);
 
   return OK;
 }
@@ -445,14 +446,14 @@ struct bcmf_frame_s *bcmf_sdpcm_get_rx_frame(FAR struct bcmf_dev_s *priv)
   struct bcmf_sdio_frame *sframe;
   FAR struct bcmf_sdio_dev_s *sbus = (FAR struct bcmf_sdio_dev_s *)priv->bus;
 
-  if (sem_wait(&sbus->queue_mutex))
+  if (nxsem_wait(&sbus->queue_mutex) < 0)
     {
       PANIC();
     }
 
   entry = bcmf_dqueue_pop_tail(&sbus->rx_queue);
 
-  sem_post(&sbus->queue_mutex);
+  nxsem_post(&sbus->queue_mutex);
 
   if (entry == NULL)
     {

@@ -1,7 +1,7 @@
 /****************************************************************************
  * sched/pthread/pthread_initialize.c
  *
- *   Copyright (C) 2007-2010, 2013 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2010, 2013, 2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -45,6 +45,8 @@
 #include <assert.h>
 #include <errno.h>
 
+#include <nuttx/semaphore.h>
+
 #include "pthread/pthread.h"
 
 /****************************************************************************
@@ -62,7 +64,7 @@
  * Parameters:
  *   None
  *
- * Return Value:
+ * Returned Value:
  *   None
  *
  ****************************************************************************/
@@ -89,42 +91,55 @@ void pthread_initialize(void)
  *  intr - false: ignore EINTR errors when locking; true tread EINTR as
  *         other errors by returning the errno value
  *
- * Return Value:
+ * Returned Value:
  *   0 on success or an errno value on failure.
  *
  ****************************************************************************/
 
 int pthread_sem_take(sem_t *sem, bool intr)
 {
+  int ret;
+
   /* Verify input parameters */
 
   DEBUGASSERT(sem != NULL);
   if (sem != NULL)
     {
-      /* Take the semaphore */
-
-      while (sem_wait(sem) != OK)
+      do
         {
-          int errcode = get_errno();
+          /* Take the semaphore (perhaps waiting) */
 
-          /* Handle the special case where the semaphore wait was
-           * awakened by the receipt of a signal.
-           */
-
-          if (intr || errcode != EINTR)
+          ret = nxsem_wait(sem);
+          if (ret < 0)
             {
-              return errcode;
+              /* The only cases that an error should occur here is if the wait
+               * was awakened by a signal or if the thread was canceled during
+               * the wait.
+               */
+
+              DEBUGASSERT(ret == -EINTR || ret == -ECANCELED);
+
+              /* When the error occurs in this case, should we errout?  Or
+               * should we just continue waiting until we have the
+               * semaphore?
+               */
+
+              if (intr)
+                {
+                  return -ret;
+                }
             }
         }
+      while (ret == -EINTR);
+
+      /* We have the semaphore (or some awful, unexpected error has
+       * occurred).
+       */
 
       return OK;
     }
-  else
-    {
-      /* NULL semaphore pointer! */
 
-      return EINVAL;
-    }
+  return EINVAL;
 }
 
 #ifdef CONFIG_PTHREAD_MUTEX_UNSAFE
@@ -139,8 +154,8 @@ int pthread_sem_trytake(sem_t *sem)
     {
       /* Try to take the semaphore */
 
-      int status = sem_trywait(sem);
-      ret = status < 0 ? get_errno() : OK;
+      int status = nxsem_trywait(sem);
+      ret = ret < 0 ? -ret : OK;
     }
 
   return ret;
@@ -149,6 +164,8 @@ int pthread_sem_trytake(sem_t *sem)
 
 int pthread_sem_give(sem_t *sem)
 {
+  int ret;
+
   /* Verify input parameters */
 
 
@@ -157,16 +174,13 @@ int pthread_sem_give(sem_t *sem)
     {
       /* Give the semaphore */
 
-      if (sem_post(sem) == OK)
+      ret = nxsem_post(sem);
+      if (ret < 0)
         {
-          return OK;
+          return -ret;
         }
-      else
-        {
-          /* sem_post() reported an error */
 
-          return get_errno();
-        }
+      return OK;
     }
   else
     {

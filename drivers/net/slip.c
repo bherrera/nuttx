@@ -1,7 +1,7 @@
 /****************************************************************************
  * drivers/net/slip.c
  *
- *   Copyright (C) 2011-2012, 2015-2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2011-2012, 2015-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Reference: RFC 1055
@@ -56,6 +56,8 @@
 
 #include <nuttx/irq.h>
 #include <nuttx/clock.h>
+#include <nuttx/signal.h>
+#include <nuttx/kthread.h>
 #include <nuttx/semaphore.h>
 #include <nuttx/net/net.h>
 #include <nuttx/net/netdev.h>
@@ -134,7 +136,7 @@
 struct slip_driver_s
 {
   volatile bool bifup;      /* true:ifup false:ifdown */
-  bool          txnodelay;  /* True: usleep() not needed */
+  bool          txnodelay;  /* True: nxsig_usleep() not needed */
   int16_t       fd;         /* TTY file descriptor */
   uint16_t      rxlen;      /* The number of bytes in rxbuf */
   pid_t         rxpid;      /* Receiver thread ID */
@@ -199,19 +201,24 @@ static int slip_rmmac(FAR struct net_driver_s *dev, FAR const uint8_t *mac);
 
 static void slip_semtake(FAR struct slip_driver_s *priv)
 {
-  /* Take the semaphore (perhaps waiting) */
+  int ret;
 
-  while (sem_wait(&priv->waitsem) != 0)
+  do
     {
-      /* The only case that an error should occur here is if
-       * the wait was awakened by a signal.
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&priv->waitsem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
        */
 
-      ASSERT(errno == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
-#define slip_semgive(p) sem_post(&(p)->waitsem);
+#define slip_semgive(p) nxsem_post(&(p)->waitsem);
 
 /****************************************************************************
  * Name: slip_write
@@ -451,7 +458,7 @@ static void slip_txtask(int argc, FAR char *argv[])
       if (!priv->txnodelay)
         {
           slip_semgive(priv);
-          usleep(SLIP_WDDELAY);
+          nxsig_usleep(SLIP_WDDELAY);
         }
       else
         {
@@ -733,7 +740,7 @@ static int slip_rxtask(int argc, FAR char *argv[])
           if (priv->dev.d_len > 0)
             {
               slip_transmit(priv);
-              kill(priv->txpid, SIGALRM);
+              (void)nxsig_kill(priv->txpid, SIGALRM);
             }
 
           net_unlock();
@@ -834,7 +841,7 @@ static int slip_txavail(FAR struct net_driver_s *dev)
       /* Wake up the TX polling thread */
 
       priv->txnodelay = true;
-      kill(priv->txpid, SIGALRM);
+      (void)nxsig_kill(priv->txpid, SIGALRM);
     }
 
   return OK;
@@ -956,8 +963,8 @@ int slip_initialize(int intf, FAR const char *devname)
 
   /* Initialize the wait semaphore */
 
-  sem_init(&priv->waitsem, 0, 0);
-  sem_setprotocol(&priv->waitsem, SEM_PRIO_NONE);
+  nxsem_init(&priv->waitsem, 0, 0);
+  nxsem_setprotocol(&priv->waitsem, SEM_PRIO_NONE);
 
   /* Put the interface in the down state.  This usually amounts to resetting
    * the device and/or calling slip_ifdown().
@@ -965,15 +972,15 @@ int slip_initialize(int intf, FAR const char *devname)
 
   slip_ifdown(&priv->dev);
 
-  /* Start the SLIP receiver task */
+  /* Start the SLIP receiver kernel thread */
 
   snprintf(buffer, 8, "%d", intf);
   argv[0] = buffer;
   argv[1] = NULL;
 
-  priv->rxpid = task_create("rxslip", CONFIG_NET_SLIP_DEFPRIO,
-                            CONFIG_NET_SLIP_STACKSIZE, (main_t)slip_rxtask,
-                            (FAR char * const *)argv);
+  priv->rxpid = kthread_create("rxslip", CONFIG_NET_SLIP_DEFPRIO,
+                               CONFIG_NET_SLIP_STACKSIZE, (main_t)slip_rxtask,
+                               (FAR char * const *)argv);
   if (priv->rxpid < 0)
     {
       nerr("ERROR: Failed to start receiver task\n");
@@ -984,11 +991,11 @@ int slip_initialize(int intf, FAR const char *devname)
 
   slip_semtake(priv);
 
-  /* Start the SLIP transmitter task */
+  /* Start the SLIP transmitter kernel thread */
 
-  priv->txpid = task_create("txslip", CONFIG_NET_SLIP_DEFPRIO,
-                            CONFIG_NET_SLIP_STACKSIZE, (main_t)slip_txtask,
-                            (FAR char * const *)argv);
+  priv->txpid = kthread_create("txslip", CONFIG_NET_SLIP_DEFPRIO,
+                               CONFIG_NET_SLIP_STACKSIZE, (main_t)slip_txtask,
+                               (FAR char * const *)argv);
   if (priv->txpid < 0)
     {
       nerr("ERROR: Failed to start receiver task\n");

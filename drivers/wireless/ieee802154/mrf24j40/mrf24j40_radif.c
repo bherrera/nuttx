@@ -310,12 +310,14 @@ int mrf24j40_txdelayed(FAR struct ieee802154_radio_s *radio,
 {
   FAR struct mrf24j40_radio_s *dev = (FAR struct mrf24j40_radio_s *)radio;
   uint8_t reg;
+  int ret;
 
   /* Get exclusive access to the radio device */
 
-  if (sem_wait(&dev->exclsem) != 0)
+  ret = nxsem_wait(&dev->exclsem);
+  if (ret < 0)
     {
-      return -EINTR;
+      return ret;
     }
 
   /* There should never be more than one of these transactions at once. */
@@ -339,14 +341,15 @@ int mrf24j40_txdelayed(FAR struct ieee802154_radio_s *radio,
 
   if (!work_available(&dev->irqwork))
     {
-      sem_post(&dev->exclsem);
+      nxsem_post(&dev->exclsem);
       mrf24j40_irqworker((FAR void *)dev);
 
       /* Get exclusive access to the radio device */
 
-      if (sem_wait(&dev->exclsem) != 0)
+      ret = nxsem_wait(&dev->exclsem);
+      if (ret < 0)
         {
-          return -EINTR;
+          return ret;
         }
     }
 
@@ -366,7 +369,7 @@ int mrf24j40_txdelayed(FAR struct ieee802154_radio_s *radio,
       mrf24j40_mactimer(dev, symboldelay);
     }
 
-  sem_post(&dev->exclsem);
+  nxsem_post(&dev->exclsem);
 
   return OK;
 }

@@ -97,11 +97,11 @@ static uint16_t tcp_poll_eventhandler(FAR struct net_driver_s *dev,
 
   ninfo("flags: %04x\n", flags);
 
-  DEBUGASSERT(!info || (info->psock && info->fds));
+  DEBUGASSERT(info == NULL || (info->psock != NULL && info->fds != NULL));
 
   /* 'priv' might be null in some race conditions (?) */
 
-  if (info)
+  if (info != NULL)
     {
       pollevent_t eventset = 0;
 
@@ -112,7 +112,11 @@ static uint16_t tcp_poll_eventhandler(FAR struct net_driver_s *dev,
           eventset |= POLLIN & info->fds->events;
         }
 
-      /* A poll is a sign that we are free to send data. */
+      /* A poll is a sign that we are free to send data.
+       * REVISIT: This is bogus:  If CONFIG_TCP_WRITE_BUFFERS=y then
+       * we never have to wait to send; otherwise, we always have to
+       * wait to send.  Receiving a poll is irrelevant.
+       */
 
       if ((flags & TCP_POLL) != 0)
         {
@@ -140,7 +144,7 @@ static uint16_t tcp_poll_eventhandler(FAR struct net_driver_s *dev,
           info->cb->event   = NULL;
 
           info->fds->revents |= eventset;
-          sem_post(info->fds->sem);
+          nxsem_post(info->fds->sem);
         }
     }
 
@@ -300,7 +304,7 @@ int tcp_pollsetup(FAR struct socket *psock, FAR struct pollfd *fds)
     {
       /* Yes.. then signal the poll logic */
 
-      sem_post(fds->sem);
+      nxsem_post(fds->sem);
     }
 
   net_unlock();

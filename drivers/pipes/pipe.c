@@ -128,11 +128,11 @@ static inline void pipe_free(int pipeno)
 {
   int ret;
 
-  ret = sem_wait(&g_pipesem);
-  if (ret == 0)
+  ret = nxsem_wait(&g_pipesem);
+  if (ret == OK)
     {
       g_pipeset &= ~(1 << pipeno);
-      (void)sem_post(&g_pipesem);
+      (void)nxsem_post(&g_pipesem);
     }
 }
 
@@ -177,12 +177,12 @@ static int pipe_close(FAR struct file *filep)
  *   the NuttX FIFOs are based in in-memory, circular buffers, the ability
  *   to control the size of those buffers is critical for system tuning.
  *
- * Inputs:
+ * Input Parameters:
  *   fd[2] - The user provided array in which to catch the pipe file
  *   descriptors
  *   bufsize - The size of the in-memory, circular buffer in bytes.
  *
- * Return:
+ * Returned Value:
  *   0 is returned on success; otherwise, -1 is returned with errno set
  *   appropriately.
  *
@@ -198,12 +198,11 @@ int pipe2(int fd[2], size_t bufsize)
 
   /* Get exclusive access to the pipe allocation data */
 
-  ret = sem_wait(&g_pipesem);
+  ret = nxsem_wait(&g_pipesem);
   if (ret < 0)
     {
-      /* sem_wait() will have already set errno */
-
-      return ERROR;
+      errcode = -ret;
+      goto errout;
     }
 
   /* Allocate a minor number for the pipe device */
@@ -211,7 +210,7 @@ int pipe2(int fd[2], size_t bufsize)
   pipeno = pipe_allocate();
   if (pipeno < 0)
     {
-      (void)sem_post(&g_pipesem);
+      (void)nxsem_post(&g_pipesem);
       errcode = -pipeno;
       goto errout;
     }
@@ -229,7 +228,7 @@ int pipe2(int fd[2], size_t bufsize)
       dev = pipecommon_allocdev(bufsize);
       if (!dev)
         {
-          (void)sem_post(&g_pipesem);
+          (void)nxsem_post(&g_pipesem);
           errcode = ENOMEM;
           goto errout_with_pipe;
         }
@@ -241,7 +240,7 @@ int pipe2(int fd[2], size_t bufsize)
       ret = register_driver(devname, &pipe_fops, 0666, (FAR void *)dev);
       if (ret != 0)
         {
-          (void)sem_post(&g_pipesem);
+          (void)nxsem_post(&g_pipesem);
           errcode = -ret;
           goto errout_with_dev;
         }
@@ -251,7 +250,7 @@ int pipe2(int fd[2], size_t bufsize)
        g_pipecreated |= (1 << pipeno);
     }
 
-  (void)sem_post(&g_pipesem);
+  (void)nxsem_post(&g_pipesem);
 
   /* Get a write file descriptor */
 

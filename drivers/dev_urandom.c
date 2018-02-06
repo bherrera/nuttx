@@ -53,6 +53,7 @@
 
 #include <nuttx/lib/lib.h>
 #include <nuttx/lib/xorshift128.h>
+#include <nuttx/semaphore.h>
 #include <nuttx/fs/fs.h>
 #include <nuttx/drivers/drivers.h>
 #include <nuttx/random.h>
@@ -312,7 +313,7 @@ static int devurand_poll(FAR struct file *filep, FAR struct pollfd *fds,
       fds->revents |= (fds->events & (POLLIN | POLLOUT));
       if (fds->revents != 0)
         {
-          sem_post(fds->sem);
+          nxsem_post(fds->sem);
         }
     }
 

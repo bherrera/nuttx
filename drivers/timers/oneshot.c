@@ -1,7 +1,7 @@
 /****************************************************************************
  * drivers/timers/oneshot.c
  *
- *   Copyright (C) 2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2016-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -50,6 +50,7 @@
 #include <debug.h>
 
 #include <nuttx/kmalloc.h>
+#include <nuttx/signal.h>
 #include <nuttx/fs/fs.h>
 #include <nuttx/timers/oneshot.h>
 
@@ -139,9 +140,9 @@ static void oneshot_callback(FAR struct oneshot_lowerhalf_s *lower,
 
 #ifdef CONFIG_CAN_PASS_STRUCTS
   value.sival_ptr = priv->od_arg;
-  (void)sigqueue(priv->od_pid, priv->od_signo, value);
+  (void)nxsig_queue(priv->od_pid, priv->od_signo, value);
 #else
-  (void)sigqueue(priv->od_pid, priv->od_signo, priv->od_arg);
+  (void)nxsig_queue(priv->od_pid, priv->od_signo, priv->od_arg);
 #endif
 }
 
@@ -178,7 +179,7 @@ static int oneshot_close(FAR struct file *filep)
 /************************************************************************************
  * Name: oneshot_read
  *
- * Description:O
+ * Description:
  *   A dummy read method.  This is provided only to satsify the VFS layer.
  *
  ************************************************************************************/
@@ -233,7 +234,7 @@ static int oneshot_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 
   /* Get exclusive access to the device structures */
 
-  ret = sem_wait(&priv->od_exclsem);
+  ret = nxsem_wait(&priv->od_exclsem);
   if (ret < 0)
     {
       return ret;
@@ -313,7 +314,7 @@ static int oneshot_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
         break;
     }
 
-  sem_post(&priv->od_exclsem);
+  nxsem_post(&priv->od_exclsem);
   return ret;
 }
 
@@ -365,7 +366,7 @@ int oneshot_register(FAR const char *devname,
   /* Initialize the new oneshot timer driver instance */
 
   priv->od_lower = lower;
-  sem_init(&priv->od_exclsem, 0, 1);
+  nxsem_init(&priv->od_exclsem, 0, 1);
 
   /* And register the oneshot timer driver */
 
@@ -373,7 +374,7 @@ int oneshot_register(FAR const char *devname,
   if (ret < 0)
     {
       snerr("ERROR: register_driver failed: %d\n", ret);
-      sem_destroy(&priv->od_exclsem);
+      nxsem_destroy(&priv->od_exclsem);
       kmm_free(priv);
     }
 

@@ -1,7 +1,7 @@
 /****************************************************************************
  * arch/arm/src/samdl/sam_spi.c
  *
- *   Copyright (C) 2014-2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2014-2018 Gregory Nutt. All rights reserved.
  *   Authors: Gregory Nutt <gnutt@nuttx.org>
  *
  * References:
@@ -292,13 +292,13 @@ static struct sam_spidev_s g_spi1dev =
 static const struct spi_ops_s g_spi2ops =
 {
   .lock              = spi_lock,
-  .select            = sam_spi0select,
+  .select            = sam_spi2select,
   .setfrequency      = spi_setfrequency,
   .setmode           = spi_setmode,
   .setbits           = spi_setbits,
-  .status            = sam_spi0status,
+  .status            = sam_spi2status,
 #ifdef CONFIG_SPI_CMDDATA
-  .cmddata           = sam_spi0cmddata,
+  .cmddata           = sam_spi2cmddata,
 #endif
   .send              = spi_send,
 #ifdef CONFIG_SPI_EXCHANGE
@@ -314,7 +314,7 @@ static const struct spi_ops_s g_spi2ops =
 
 static struct sam_spidev_s g_spi2dev =
 {
-  .ops       = &g_spi1ops,
+  .ops       = &g_spi2ops,
   .sercom    = 2,
 #if 0 /* Not used */
   .irq       = SAM_IRQ_SERCOM2,
@@ -780,27 +780,32 @@ static int spi_interrupt(int irq, void *context, FAR void *arg)
 static int spi_lock(struct spi_dev_s *dev, bool lock)
 {
   struct sam_spidev_s *priv = (struct sam_spidev_s *)dev;
+  int ret;
 
   spiinfo("lock=%d\n", lock);
   if (lock)
     {
       /* Take the semaphore (perhaps waiting) */
 
-      while (sem_wait(&priv->spilock) != 0)
+      do
         {
-          /* The only case that an error should occur here is if the wait was awakened
-           * by a signal.
+          ret = nxsem_wait(&priv->spilock);
+
+          /* The only case that an error should occur here is if the wait
+           * was awakened by a signal.
            */
 
-          ASSERT(errno == EINTR);
+          DEBUGASSERT(ret == OK || ret == -EINTR);
         }
+      while (ret == -EINTR);
     }
   else
     {
-      (void)sem_post(&priv->spilock);
+      (void)nxsem_post(&priv->spilock);
+      ret = OK;
     }
 
-  return OK;
+  return ret;
 }
 
 /****************************************************************************
@@ -939,7 +944,12 @@ static void spi_setmode(struct spi_dev_s *dev, enum spi_mode_e mode)
     {
       /* Yes... Set the mode appropriately */
 
+      /* First we need to disable SPI while we change the mode */
+
       regval = spi_getreg32(priv, SAM_SPI_CTRLA_OFFSET);
+      spi_putreg32(priv, regval & ~SPI_CTRLA_ENABLE, SAM_SPI_CTRLA_OFFSET);
+      spi_wait_synchronization(priv);
+
       regval &= ~(SPI_CTRLA_CPOL | SPI_CTRLA_CPHA);
 
       switch (mode)
@@ -964,7 +974,7 @@ static void spi_setmode(struct spi_dev_s *dev, enum spi_mode_e mode)
           return;
         }
 
-      spi_putreg32(priv, regval, SAM_SPI_CTRLA_OFFSET);
+      spi_putreg32(priv, regval | SPI_CTRLA_ENABLE, SAM_SPI_CTRLA_OFFSET);
 
       /* Save the mode so that subsequent re-configurations will be faster */
 
@@ -1312,7 +1322,7 @@ static void spi_pad_configure(struct sam_spidev_s *priv)
  * Description:
  *   Initialize the selected SPI port
  *
- * Input Parameter:
+ * Input Parameters:
  *   port - SPI "port" number (i.e., SERCOM number)
  *
  * Returned Value:
@@ -1416,7 +1426,7 @@ struct spi_dev_s *sam_spibus_initialize(int port)
   /* Set the SERCOM in SPI master mode (no address) */
 
   regval  = spi_getreg32(priv, SAM_SPI_CTRLA_OFFSET);
-  regval &= ~SPI_CTRLA_MODE_MASK;
+  regval &= ~(SPI_CTRLA_MODE_MASK | SPI_CTRLA_FORM_MASK);
   regval |= (SPI_CTRLA_MODE_MASTER | SPI_CTRLA_FORM_SPI);
   spi_putreg32(priv, regval, SAM_SPI_CTRLA_OFFSET);
 
@@ -1430,11 +1440,13 @@ struct spi_dev_s *sam_spibus_initialize(int port)
 
   (void)spi_setfrequency((struct spi_dev_s *)priv, 400000);
 
-  /* Set MSB first data order and the configured pad mux setting,
-   * Note that SPI mode 0 is assumed initially (CPOL=0 and CPHA=0).
+  /* Set MSB first data order and the configured pad mux setting.
+   * SPI mode 0 is assumed initially (CPOL=0 and CPHA=0).
    */
 
-  regval = (SPI_CTRLA_MSBFIRST | priv->muxconfig);
+  regval &= ~(SPI_CTRLA_DOPO_MASK | SPI_CTRLA_DIPO_MASK);
+  regval &= ~(SPI_CTRLA_CPHA | SPI_CTRLA_CPOL);
+  regval |= (SPI_CTRLA_MSBFIRST | priv->muxconfig);
   spi_putreg32(priv, regval, SAM_SPI_CTRLA_OFFSET);
 
   /* Enable the receiver.  Note that 8-bit data width is assumed initially */

@@ -322,6 +322,17 @@
 #  define GPIO_OLED_DC    GPIO_OLED_A0
 #endif
 
+/* Display JLX12864G */
+
+#define STM32_LCD_RST   (GPIO_OUTPUT|GPIO_PUSHPULL|GPIO_SPEED_50MHz|\
+                           GPIO_OUTPUT_SET|GPIO_PORTB|GPIO_PIN6)
+
+#define STM32_LCD_CS    (GPIO_OUTPUT|GPIO_PUSHPULL|GPIO_SPEED_50MHz|\
+                           GPIO_OUTPUT_SET|GPIO_PORTB|GPIO_PIN7)
+
+#define STM32_LCD_RS    (GPIO_OUTPUT|GPIO_PUSHPULL|GPIO_SPEED_50MHz|\
+                           GPIO_OUTPUT_SET|GPIO_PORTB|GPIO_PIN8)
+
 /* STM32F4DIS-BB MicroSD
  *
  * ---------- ------------- ------------------------------
@@ -380,6 +391,22 @@
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
+
+/****************************************************************************
+ * Name: stm32_bringup
+ *
+ * Description:
+ *   Perform architecture-specific initialization
+ *
+ *   CONFIG_BOARD_INITIALIZE=y :
+ *     Called from board_initialize().
+ *
+ *   CONFIG_BOARD_INITIALIZE=y && CONFIG_LIB_BOARDCTL=y :
+ *     Called from the NSH library
+ *
+ ****************************************************************************/
+
+int stm32_bringup(void);
 
 /****************************************************************************
  * Name: stm32_spidev_initialize
@@ -443,20 +470,16 @@ int stm32_lis3dshinitialize(FAR const char *devpath);
 #endif
 
 /****************************************************************************
- * Name: stm32_bringup
+ * Name: nunchuck_initialize
  *
  * Description:
- *   Perform architecture-specific initialization
- *
- *   CONFIG_BOARD_INITIALIZE=y :
- *     Called from board_initialize().
- *
- *   CONFIG_BOARD_INITIALIZE=y && CONFIG_LIB_BOARDCTL=y :
- *     Called from the NSH library
+ *   Initialize and register the button joystick driver
  *
  ****************************************************************************/
 
-int stm32_bringup(void);
+#ifdef CONFIG_INPUT_NUNCHUCK
+int nunchuck_initialize(FAR char *devname);
+#endif
 
 /****************************************************************************
  * Name: stm32_usbinitialize
@@ -697,7 +720,7 @@ int stm32_pca9635_initialize(void);
 #endif
 
 /****************************************************************************
- * Name stm32_rgbled_setup
+ * Name: stm32_rgbled_setup
  *
  * Description:
  *   This function is called by board initialization logic to configure the
@@ -727,7 +750,7 @@ int stm32_rgbled_setup(void);
  *             form /dev/timer0
  *   timer   - The timer's number.
  *
- * Returned Values:
+ * Returned Value:
  *   Zero (OK) is returned on success; A negated errno value is returned
  *   to indicate the nature of any failure.
  *
@@ -738,7 +761,7 @@ int stm32_timer_driver_setup(FAR const char *devpath, int timer);
 #endif
 
 /****************************************************************************
- * Name xen1210_archinitialize
+ * Name: xen1210_archinitialize
  *
  * Description:
  *   This function is called by board initialization logic to configure the

@@ -480,10 +480,11 @@ static int cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
   uint16_t nexthead;
   uint16_t nbytes = 0;
 
+  DEBUGASSERT(priv != NULL && rdcontainer != NULL);
+
   uinfo("head=%d tail=%d nrdq=%d reqlen=%d\n",
         priv->serdev.recv.head, priv->serdev.recv.tail, priv->nrdq, reqlen);
 
-  DEBUGASSERT(priv != NULL && rdcontainer != NULL);
 #ifdef CONFIG_CDCACM_IFLOWCONTROL
   DEBUGASSERT(priv->rxenabled && !priv->iactive);
 #else
@@ -515,9 +516,13 @@ static int cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
     }
 
 #ifdef CONFIG_SERIAL_IFLOWCONTROL_WATERMARKS
-  /* Pre-calcuate the watermark level that we will need to test against. */
+  /* Pre-calcuate the watermark level that we will need to test against.
+   * Note that the range of the the upper watermark is from 1 to 99 percent
+   * and that the actual capacity of the RX biffer is (recv->size - 1).
+   */
 
   watermark = (CONFIG_SERIAL_IFLOWCONTROL_UPPER_WATERMARK * recv->size) / 100;
+  DEBUGASSERT(watermark > 0 && watermark < (recv->size - 1));
 #endif
 
   /* Then copy data into the RX buffer until either: (1) all of the data has
@@ -535,8 +540,8 @@ static int cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
 
   while (nexthead != recv->tail && nbytes < reqlen)
     {
-#ifdef CONFIG_SERIAL_IFLOWCONTROL
-#ifdef CONFIG_SERIAL_IFLOWCONTROL_WATERMARKS
+#if defined(CONFIG_SERIAL_IFLOWCONTROL) && \
+    defined(CONFIG_SERIAL_IFLOWCONTROL_WATERMARKS)
       unsigned int nbuffered;
 
       /* How many bytes are buffered */
@@ -565,21 +570,6 @@ static int cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
               break;
             }
         }
-#else
-      /* Check if RX buffer is full and allow serial low-level driver to pause
-       * processing. This allows proper utilization of hardware flow control.
-       */
-
-      if (nexthead == rxbuf->tail);
-        {
-          if (cdcuart_rxflowcontrol(&priv->serdev, recv->size, true))
-            {
-              /* Low-level driver activated RX flow control, exit loop now. */
-
-              break;
-            }
-        }
-#endif
 #endif
 
       /* Copy one byte to the head of the circular RX buffer */
@@ -604,10 +594,23 @@ static int cdcacm_recvpacket(FAR struct cdcacm_dev_s *priv,
 
   recv->head = currhead;
 
+#if defined(CONFIG_SERIAL_IFLOWCONTROL) && \
+    !defined(CONFIG_SERIAL_IFLOWCONTROL_WATERMARKS)
+  /* Check if RX buffer became full and allow serial low-level driver to
+   * pause processing. This allows proper utilization of hardware flow
+   * control when there are no watermarks.
+   */
+
+ if (nexthead == recv->tail)
+   {
+     (void)cdcuart_rxflowcontrol(&priv->serdev, recv->size - 1, true);
+   }
+#endif
+
   /* If data was added to the incoming serial buffer, then wake up any
    * threads is waiting for incoming data. If we are running in an interrupt
-   * handler, then the serial driver will not run until the interrupt handler
-   * returns.
+   * handler, then the serial driver will not run until the interrupt
+   * handler returns.
    */
 
   if (nbytes > 0)
@@ -2635,7 +2638,7 @@ static void cdcuart_rxint(FAR struct uart_dev_s *dev, bool enable)
  *   Return true if UART activated RX flow control to block more incoming
  *   data
  *
- * Input parameters:
+ * Input Parameters:
  *   dev       - UART device instance
  *   nbuffered - the number of characters currently buffered
  *               (if CONFIG_SERIAL_IFLOWCONTROL_WATERMARKS is
@@ -2866,7 +2869,7 @@ static bool cdcuart_txempty(FAR struct uart_dev_s *dev)
  *   Register USB serial port (and USB serial console if so configured) and
  *   return the class object.
  *
- * Input Parameter:
+ * Input Parameters:
  *   minor - Device minor number.  E.g., minor 0 would correspond to
  *     /dev/ttyACM0.
  *   classdev - The location to return the CDC serial class' device
@@ -3001,7 +3004,7 @@ errout_with_class:
  * Description:
  *   Register USB serial port (and USB serial console if so configured).
  *
- * Input Parameter:
+ * Input Parameters:
  *   minor - Device minor number.  E.g., minor 0 would correspond to
  *     /dev/ttyACM0.
  *   handle - An optional opaque reference to the CDC/ACM class object that

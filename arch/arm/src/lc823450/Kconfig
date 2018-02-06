@@ -7,27 +7,26 @@ comment "LC823450 Configuration Options"
 
 menu "LC823450 Peripheral Support"
 
-config SERIAL_TERMIOS
-        bool "Serial driver TERMIOS supported"
-        default n
-        ---help---
-                Serial driver supports termios.h interfaces (tcsetattr, tcflush, etc.).
-                If this is not defined, then the terminal settings (baud, parity, etc).
-                are not configurable at runtime; serial streams cannot be flushed, etc..
+config LC823450_IPL2
+	bool "IPL2"
+	default n
 
 config LC823450_UART0
 	bool "UART0"
 	select UART0_SERIALDRIVER
+	select ARCH_HAVE_SERIAL_TERMIOS
 	default n
 
 config LC823450_UART1
 	bool "UART1"
 	select UART1_SERIALDRIVER
+	select ARCH_HAVE_SERIAL_TERMIOS
 	default n
 
 config LC823450_UART2
 	bool "UART2"
 	select UART2_SERIALDRIVER
+	select ARCH_HAVE_SERIAL_TERMIOS
 	default n
 
 config LC823450_WDT
@@ -130,6 +129,14 @@ config MTD_CONFIG_DEVPATH
 	string "Device path for config"
 	default "/dev/mtdblock0p2"
 
+config MTD_RECOVERY_DEVPATH
+	string "Device path for recovery"
+	default "/dev/mtdblock0p3"
+
+config MTD_KERNEL_DEVPATH
+	string "Device path for kernel"
+	default "/dev/mtdblock0p4"
+
 config MTD_ETC_DEVPATH
 	string "Device path for etc"
 	default "/dev/mtdblock0p5"
@@ -178,6 +185,11 @@ config LC823450_I2C1
 	default n
 	depends on I2C
 
+config LC823450_I2S0
+	bool "I2S0"
+	default n
+	depends on I2S
+
 config LC823450_SPI_DMA
 	bool "DMA for SPI"
 	default n
@@ -218,7 +230,7 @@ config LC823450_USBDEV_CUSTOM_HSDSEL_10
 endchoice
 
 config LC823450_LSISTBY
-	bool "LIS Standby"
+	bool "LSI Standby"
 	default n
 
 config LC823450_MTM0_TICK
@@ -232,6 +244,10 @@ config LC823450_SLEEP_MODE
 
 config HRT_TIMER
 	bool "High resolution timer"
+	default n
+
+config DVFS
+	bool "Dynamic Voltage and Frequencey Scaling"
 	default n
 
 endmenu

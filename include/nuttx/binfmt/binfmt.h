@@ -1,7 +1,7 @@
 /****************************************************************************
  * include/nuttx/binfmt/binfmt.h
  *
- *   Copyright (C) 2009, 2012, 2014 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2009, 2012, 2014, 2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -57,6 +57,7 @@
 /****************************************************************************
  * Public Types
  ****************************************************************************/
+
 /* EXEPATH_HANDLE is an opaque handle used to traverse the absolute paths
  * assigned to the PATH environment variable.
  */
@@ -215,9 +216,9 @@ int unregister_binfmt(FAR struct binfmt_s *binfmt);
  *   prep the module for execution.
  *
  * Returned Value:
- *   This is an end-user function, so it follows the normal convention:
- *   Returns 0 (OK) on success.  On failure, it returns -1 (ERROR) with
- *   errno set appropriately.
+ *   This is a NuttX internal function so it follows the convention that
+ *   0 (OK) is returned on success and a negated errno is returned on
+ *   failure.
  *
  ****************************************************************************/
 
@@ -251,9 +252,9 @@ int unload_module(FAR struct binary_s *bin);
  *   Execute a module that has been loaded into memory by load_module().
  *
  * Returned Value:
- *   This is an end-user function, so it follows the normal convention:
- *   Returns the PID of the exec'ed module.  On failure, it returns
- *   -1 (ERROR) and sets errno appropriately.
+ *   This is a NuttX internal function so it follows the convention that
+ *   0 (OK) is returned on success and a negated errno is returned on
+ *   failure.
  *
  ****************************************************************************/
 
@@ -267,18 +268,18 @@ int exec_module(FAR const struct binary_s *bin);
  *   the parent of the newly created task to automatically unload the
  *   module when the task exits.  This assumes that (1) the caller is the
  *   parent of the created task, (2) that bin was allocated with kmm_malloc()
- *   or friends.  It will also automatically free the structure with kmm_free()
- *   after unloading the module.
+ *   or friends.  It will also automatically free the structure with
+ *   kmm_free() after unloading the module.
  *
- * Input Parameter:
+ * Input Parameters:
  *   pid - The task ID of the child task
  *   bin - This structure must have been allocated with kmm_malloc() and must
  *         persist until the task unloads
  *
  * Returned Value:
- *   This is an end-user function, so it follows the normal convention:
- *   It returns 0 (OK) if the callback was successfully scheduled. On
- *  failure, it returns -1 (ERROR) and sets errno appropriately.
+ *   This is a NuttX internal function so it follows the convention that
+ *   0 (OK) is returned on success and a negated errno is returned on
+ *   failure.
  *
  ****************************************************************************/
 
@@ -295,15 +296,51 @@ int schedule_unload(pid_t pid, FAR struct binary_s *bin);
  *   also defined, this function will automatically call schedule_unload()
  *   to unload the module when task exits.
  *
- *   NOTE: This function is flawed and useless without CONFIG_SCHED_ONEXIT
- *   and CONFIG_SCHED_HAVE_PARENT because there is then no mechanism to
- *   unload the module once it exits.
+ *   This non-standard, NuttX function is similar to execv() and
+ *   posix_spawn() but differs in the following ways;
  *
- * Input Parameter:
- *   filename - Fulll path to the binary to be loaded
- *   argv     - Argument list
- *   exports  - Table of exported symbols
- *   nexports - The number of symbols in exports
+ *   - Unlike execv() and posix_spawn() this function accepts symbol table
+ *     information as input parameters. This means that the symbol table
+ *     used to link the application prior to execution is provided by the
+ *     caller, not by the system.
+ *   - Unlike execv(), this function always returns.
+ *
+ *   This non-standard interface is included as a official NuttX API only
+ *   because it is needed in certain build modes: exec() is probably the
+ *   only want to load programs in the PROTECTED mode. Other file execution
+ *   APIs rely on a symbol table provided by the OS. In the PROTECTED build
+ *   mode, the OS cannot provide any meaningful symbolic information for
+ *   execution of code in the user-space blob so that is the exec() function
+ *   is really needed in that build case
+ *
+ *   The interface is available in the FLAT build mode although it is not
+ *   really necessary in that case. It is currently used by some example
+ *   code under the apps/ that that generate their own symbol tables for
+ *   linking test programs. So althought it is not necessary, it can still
+ *   be useful.
+ *
+ *   The interface would be completely useless and will not be supported in
+ *   in the KERNEL build mode where the contrary is true: An application
+ *   process cannot provide any meaning symbolic information for use in
+ *   linking a different process.
+ *
+ *   NOTE: This function is flawed and useless without CONFIG_SCHED_ONEXIT
+ *   and CONFIG_SCHED_HAVE_PARENT because without those features there is
+ *   then no mechanism to unload the module once it exits.
+ *
+ * Input Parameters:
+ *   filename - The path to the program to be executed. If
+ *              CONFIG_BINFMT_EXEPATH is defined in the configuration, then
+ *              this may be a relative path from the current working
+ *              directory. Otherwise, path must be the absolute path to the
+ *              program.
+ *   argv     - A pointer to an array of string arguments. The end of the
+ *              array is indicated with a NULL entry.
+ *   exports  - The address of the start of the caller-provided symbol
+ *              table. This symbol table contains the addresses of symbols
+ *              exported by the caller and made available for linking the
+ *              module into the system.
+ *   nexports - The number of symbols in the exports table.
  *
  * Returned Value:
  *   This is an end-user function, so it follows the normal convention:

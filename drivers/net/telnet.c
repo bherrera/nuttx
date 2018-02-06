@@ -1,7 +1,7 @@
 /****************************************************************************
  * drivers/net/telnet.c
  *
- *   Copyright (C) 2007, 2009, 2011-2013 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007, 2009, 2011-2013, 2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * This is a leverage of similar logic from uIP which has a compatible BSD
@@ -83,6 +83,9 @@
 
 #define ISO_nl       0x0a
 #define ISO_cr       0x0d
+
+#define TELNET_SGA   0x03  /* Suppress Go Ahead */
+#define TELNET_ECHO  0x01
 
 #define TELNET_IAC   255
 #define TELNET_WILL  251
@@ -251,9 +254,11 @@ static void telnet_getchar(FAR struct telnet_dev_s *priv, uint8_t ch,
 {
   register int index;
 
+#ifndef CONFIG_TELNET_CHARACTER_MODE
   /* Ignore carriage returns */
 
   if (ch != ISO_cr)
+#endif
     {
       /* Add all other characters to the destination buffer */
 
@@ -334,9 +339,32 @@ static ssize_t telnet_receive(FAR struct telnet_dev_s *priv, FAR const char *src
             break;
 
           case STATE_DO:
+#ifdef CONFIG_TELNET_CHARACTER_MODE
+            if (ch == TELNET_SGA)
+              {
+                /* If it received 'Suppress Go Ahead', reply with a WILL */
+
+                telnet_sendopt(priv, TELNET_WILL, ch);
+
+                /* Also, send 'WILL ECHO' */
+
+                telnet_sendopt(priv, TELNET_WILL, TELNET_ECHO);
+              }
+            else if (ch == TELNET_ECHO)
+              {
+                /* If it received 'ECHO', then do nothing */
+              }
+            else
+              {
+                /* Reply with a WONT */
+
+                telnet_sendopt(priv, TELNET_WONT, ch);
+              }
+#else
             /* Reply with a WONT */
 
             telnet_sendopt(priv, TELNET_WONT, ch);
+#endif
             priv->td_state = STATE_NORMAL;
             break;
 
@@ -439,15 +467,19 @@ static void telnet_sendopt(FAR struct telnet_dev_s *priv, uint8_t option,
                            uint8_t value)
 {
   uint8_t optbuf[4];
+  int ret;
+
   optbuf[0] = TELNET_IAC;
   optbuf[1] = option;
   optbuf[2] = value;
   optbuf[3] = 0;
 
   telnet_dumpbuffer("Send optbuf", optbuf, 4);
-  if (psock_send(&priv->td_psock, optbuf, 4, 0) < 0)
+
+  ret = psock_send(&priv->td_psock, optbuf, 4, 0);
+  if (ret < 0)
     {
-      nerr("ERROR: Failed to send TELNET_IAC\n");
+      nerr("ERROR: Failed to send TELNET_IAC: %d\n", ret);
     }
 }
 
@@ -474,10 +506,11 @@ static int telnet_open(FAR struct file *filep)
 
   /* Get exclusive access to the device structures */
 
-  ret = sem_wait(&priv->td_exclsem);
+  ret = nxsem_wait(&priv->td_exclsem);
   if (ret < 0)
     {
-      ret = -errno;
+      nerr("ERROR: nxsem_wait failed: %d\n", ret);
+      DEBUGASSERT(ret == -EINTR);
       goto errout;
     }
 
@@ -501,7 +534,7 @@ static int telnet_open(FAR struct file *filep)
   ret = OK;
 
 errout_with_sem:
-  sem_post(&priv->td_exclsem);
+  nxsem_post(&priv->td_exclsem);
 
 errout:
   return ret;
@@ -522,10 +555,11 @@ static int telnet_close(FAR struct file *filep)
 
   /* Get exclusive access to the device structures */
 
-  ret = sem_wait(&priv->td_exclsem);
+  ret = nxsem_wait(&priv->td_exclsem);
   if (ret < 0)
     {
-      ret = -errno;
+      nerr("ERROR: nxsem_wait failed: %d\n", ret);
+      DEBUGASSERT(ret == -EINTR);
       goto errout;
     }
 
@@ -538,7 +572,7 @@ static int telnet_close(FAR struct file *filep)
       /* Just decrement the reference count and release the semaphore */
 
       priv->td_crefs--;
-      sem_post(&priv->td_exclsem);
+      nxsem_post(&priv->td_exclsem);
     }
   else
     {
@@ -587,7 +621,7 @@ static int telnet_close(FAR struct file *filep)
        */
 
       DEBUGASSERT(priv->td_exclsem.semcount == 0);
-      sem_destroy(&priv->td_exclsem);
+      nxsem_destroy(&priv->td_exclsem);
       free(priv);
       sched_unlock();
     }
@@ -656,7 +690,7 @@ static ssize_t telnet_read(FAR struct file *filep, FAR char *buffer, size_t len)
     }
   while (ret == 0);
 
-  /* Return:
+  /* Returned Value:
    *
    * ret > 0:  The number of characters copied into the user buffer by
    *           telnet_receive().
@@ -749,7 +783,7 @@ static ssize_t telnet_write(FAR struct file *filep, FAR const char *buffer, size
  *   session - On input, contains the socket descriptor that represents the
  *   new telnet connection.  On output, it holds the path to the new Telnet driver.
  *
- * Return:
+ * Returned Value:
  *   Zero (OK) on success; a negated errno value on failure.
  *
  ****************************************************************************/
@@ -773,7 +807,7 @@ static int telnet_session(FAR struct telnet_session_s *session)
 
   /* Initialize the allocated driver instance */
 
-  sem_init(&priv->td_exclsem, 0, 1);
+  nxsem_init(&priv->td_exclsem, 0, 1);
 
   priv->td_state   = STATE_NORMAL;
   priv->td_crefs   = 0;
@@ -806,13 +840,14 @@ static int telnet_session(FAR struct telnet_session_s *session)
 
   do
     {
-      ret = sem_wait(&g_telnet_common.tc_exclsem);
-      if (ret < 0 && errno != -EINTR)
+      ret = nxsem_wait(&g_telnet_common.tc_exclsem);
+      if (ret < 0 && ret != -EINTR)
         {
+          nerr("ERROR: nxsem_wait failed: %d\n", ret);
           goto errout_with_clone;
         }
     }
-  while (ret < 0);
+  while (ret == -EINTR);
 
   /* Loop until the device name is verified to be unique. */
 
@@ -828,7 +863,7 @@ static int telnet_session(FAR struct telnet_session_s *session)
                priv->td_minor);
 
       ret = stat(session->ts_devpath, &statbuf);
-      DEBUGASSERT(ret >= 0 || errno == ENOENT);
+      DEBUGASSERT(ret >= 0 || get_errno() == ENOENT);
     }
   while (ret >= 0 && start != g_telnet_common.tc_minor);
 
@@ -855,11 +890,11 @@ static int telnet_session(FAR struct telnet_session_s *session)
 
   /* Return the path to the new telnet driver */
 
-  sem_post(&g_telnet_common.tc_exclsem);
+  nxsem_post(&g_telnet_common.tc_exclsem);
   return OK;
 
 errout_with_semaphore:
-  sem_post(&g_telnet_common.tc_exclsem);
+  nxsem_post(&g_telnet_common.tc_exclsem);
 
 errout_with_clone:
   psock_close(&priv->td_psock);
@@ -943,7 +978,7 @@ static int common_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
  * Parameters:
  *   None
  *
- * Return:
+ * Returned Value:
  *   Zero (OK) on success; a negated errno value on failure.
  *
  ****************************************************************************/

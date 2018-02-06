@@ -69,14 +69,12 @@
  *   window may be safely closed.  Closing the window prior with pending
  *   callbacks can lead to bad behavior when the callback is executed.
  *
- *   Multiple user mode only!
- *
  * Input Parameters:
  *   wnd - The window to be blocked
  *   arg - An argument that will accompany the block messages (This is arg2
  *         in the blocked callback).
  *
- * Return:
+ * Returned Value:
  *   OK on success; ERROR on failure with errno set appropriately
  *
  ****************************************************************************/

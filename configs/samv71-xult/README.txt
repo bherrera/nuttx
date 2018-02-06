@@ -279,7 +279,7 @@ Enabling HSMCI support. The SAMV7-XULT provides a one, full-size SD memory card 
     CONFIG_MMCSD=y                        : Enable MMC/SD support
     CONFIG_MMSCD_NSLOTS=1                 : One slot per driver instance
     CONFIG_MMCSD_MULTIBLOCK_DISABLE=y     : (REVISIT)
-    CONFIG_MMCSD_HAVECARDDETECT=y         : Supports card-detect PIOs
+    CONFIG_MMCSD_HAVE_CARDDETECT=y         : Supports card-detect PIOs
     CONFIG_MMCSD_MMCSUPPORT=n             : Interferes with some SD cards
     CONFIG_MMCSD_SPI=n                    : No SPI-based MMC/SD support
     CONFIG_MMCSD_SDIO=y                   : SDIO-based MMC/SD support
@@ -717,7 +717,7 @@ Selecting the GMAC peripheral
     CONFIG_NET_UDP=y                     : Enable UDP networking
     CONFIG_NET_BROADCAST=y               : Support UDP broadcase packets
     CONFIG_NET_ICMP=y                    : Enable ICMP networking
-    CONFIG_NET_ICMP_PING=y               : Needed for NSH ping command
+    CONFIG_NET_ICMP_SOCKET=y             : Needed for NSH ping command
                                          : Defaults should be okay for other options
   Device drivers -> Network Device/PHY Support
     CONFIG_NETDEVICES=y                  : Enabled PHY selection
@@ -1231,7 +1231,6 @@ MXT Configuration Options
 
   Application Configuration -> Examples -> Touchscreen example
     CONFIG_EXAMPLES_TOUCHSCREEN=y          : Enables the example
-    CONFIG_EXAMPLES_TOUCHSCREEN_ARCHINIT=y : Have board-specific intialization
     CONFIG_EXAMPLES_TOUCHSCREEN_DEVPATH="/dev/input0"
     CONFIG_EXAMPLES_TOUCHSCREEN_MINOR=0
 
@@ -1708,28 +1707,6 @@ NOTES:
 
 Configuration sub-directories
 -----------------------------
-
-  fb
-  --
-
-    A simple NSH configuration used for some basic (non-graphic) debug of
-    the framebuffer character driver at drivers/video/fb.c using test at
-    apps/examples/fb.  The SAMv7-XULT LCD driver does not support a
-    framebuffer!  This configuration uses the LCD framebuffer front end at
-    drivers/lcd/lcd_framebuffer to convert the LCD interface into a
-    compatible framebuffer interface.
-
-    NOTES:
-
-    1. This configuration uses USART0 to avoid conflicts with the LCD mode.
-       See the section about entitle "Serial Console" for connection of
-       RS-232 driver hardware.
-
-    STATUS:
-    2017-09-17:  This configuration was completed.  The frame buffer driver
-      is not yet functional.  I see the image only on the right side of the
-      LCD and the colors appear wrong.  NOTE that the similar configuration
-      for the STM3240G-EVAL is fully functional.
 
   knsh:
 

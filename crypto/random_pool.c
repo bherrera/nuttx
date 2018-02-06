@@ -370,7 +370,7 @@ static void rng_init(void)
   cryptinfo("Initializing RNG\n");
 
   memset(&g_rng, 0, sizeof(struct rng_s));
-  sem_init(&g_rng.rd_sem, 0, 1);
+  nxsem_init(&g_rng.rd_sem, 0, 1);
 
   /* We do not initialize output here because this is called
    * quite early in boot and there may not be enough entropy.
@@ -499,17 +499,28 @@ void up_rngaddentropy(enum rnd_source_t kindof, FAR const uint32_t *buf,
 
 void up_rngreseed(void)
 {
-  while (sem_wait(&g_rng.rd_sem) != 0)
+  int ret;
+
+  do
     {
-      assert(errno == EINTR);
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&g_rng.rd_sem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
+       */
+
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 
   if (g_rng.rd_newentr >= MIN_SEED_NEW_ENTROPY_WORDS)
     {
       rng_reseed();
     }
 
-  sem_post(&g_rng.rd_sem);
+  nxsem_post(&g_rng.rd_sem);
 }
 
 /****************************************************************************
@@ -551,11 +562,22 @@ void up_randompool_initialize(void)
 
 void getrandom(FAR void *bytes, size_t nbytes)
 {
-  while (sem_wait(&g_rng.rd_sem) != 0)
+  int ret;
+
+  do
     {
-      assert(errno == EINTR);
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&g_rng.rd_sem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
+       */
+
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 
   rng_buf_internal(bytes, nbytes);
-  sem_post(&g_rng.rd_sem);
+  nxsem_post(&g_rng.rd_sem);
 }

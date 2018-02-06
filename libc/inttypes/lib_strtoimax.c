@@ -40,10 +40,17 @@
 #include <nuttx/config.h>
 
 #include <stdbool.h>
+#include <stdlib.h>
 #include <inttypes.h>
 #include <errno.h>
 
 #include "libc.h"
+
+/* Current implementation depends on strtoull() and, hence, is only
+ * available if long long types are supported.
+ */
+
+#ifdef CONFIG_HAVE_LONG_LONG
 
 /****************************************************************************
  * Public Functions
@@ -53,11 +60,11 @@
  * Name: strtoimax
  *
  * Description:
- *   The strtoimax() function  converts  the initial part of the string in
+ *   The strtoimax() function  converts the initial part of the string in
  *   nptr to a intmax_t integer value according to the given base, which
  *   must be between 2 and 36 inclusive, or be the special value 0.
  *
- * Returns:
+ * Returned Value:
  *   - The converted value, if the base and number are valid
  *   - 0 if an error occurs, and set errno to:
  *     * EINVAL if base < 2 or base > 36
@@ -118,3 +125,5 @@ intmax_t strtoimax(FAR const char *nptr, FAR char **endptr, int base)
 
   return (intmax_t)accum;
 }
+
+#endif /* CONFIG_HAVE_LONG_LONG */

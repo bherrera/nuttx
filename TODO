@@ -1,20 +1,20 @@
-NuttX TODO List (Last updated August 22, 2017)
+NuttX TODO List (Last updated January 23, 2018)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 This file summarizes known NuttX bugs, limitations, inconsistencies with
 standards, things that could be improved, and ideas for enhancements.  This
-TODO list does not include issues associated with individual boar ports. See
+TODO list does not include issues associated with individual board ports. See
 also the individual README.txt files in the configs/ sub-directories for
 issues related to each board port.
 
 nuttx/:
 
- (12)  Task/Scheduler (sched/)
+ (14)  Task/Scheduler (sched/)
   (1)  SMP
   (1)  Memory Management (mm/)
   (0)  Power Management (drivers/pm)
   (3)  Signals (sched/signal, arch/)
-  (4)  pthreads (sched/pthread)
+  (2)  pthreads (sched/pthread)
   (0)  Message Queues (sched/mqueue)
   (8)  Kernel/Protected Build
   (3)  C++ Support
@@ -22,10 +22,10 @@ nuttx/:
  (16)  Network (net/, drivers/net)
   (4)  USB (drivers/usbdev, drivers/usbhost)
   (0)  Other drivers (drivers/)
- (13)  Libraries (libc/, libm/)
+ (12)  Libraries (libc/, libm/)
  (10)  File system/Generic drivers (fs/, drivers/)
  (10)  Graphics Subsystem (graphics/)
-  (2)  Build system / Toolchains
+  (1)  Build system / Toolchains
   (3)  Linux/Cywgin simulation (arch/sim)
   (4)  ARM (arch/arm/)
 
@@ -47,7 +47,7 @@ o Task/Scheduler (sched/)
   Status:      Closed.  No, this behavior will not be implemented.
   Priority:    Medium, required for good emulation of process/pthread model.
                The current behavior allows for the main thread of a task to
-               exit() and any child pthreads will perist.  That does raise
+               exit() and any child pthreads will persist.  That does raise
                some issues:  The main thread is treated much like just-another-
                pthread but must follow the semantics of a task or a process.
                That results in some inconsistencies (for example, with robust
@@ -124,7 +124,7 @@ o Task/Scheduler (sched/)
                The fix for all of these issues it to have the callbacks
                run on the caller's thread as is currently done with
                signal handlers.  Signals are delivered differently in
-               PROTECTED and KERNEL modes:  The deliver is involes a
+               PROTECTED and KERNEL modes:  The delivery involves a
                signal handling trampoline function in the user address
                space and two signal handlers:  One to call the signal
                handler trampoline in user mode (SYS_signal_handler) and
@@ -170,9 +170,14 @@ o Task/Scheduler (sched/)
                to make this change:  Just move the pterrno field from
                struct tcb_s to struct task_group_s.   However, I am still not
                sure if this should be done or not.
-  Status:      Closed.  The existing solution is better (although its
-               incompatibilities could show up in porting some code).
-  Priority:    Low
+               NOTE: glibc behaves this way unless __thread is defined then,
+               in that case, it behaves like NuttX (using TLS to save the
+               thread local errno).
+  Status:      Closed.  The existing solution is better and compatible with
+               thread-aware GLIBC (although its incompatibilities could show
+               up in porting some code).  I will retain this issue for
+               referencei only.
+  Priority:    N/A
 
   Title:       SCALABILITY
   Description: Task control information is retained in simple lists.  This
@@ -198,15 +203,11 @@ o Task/Scheduler (sched/)
   Description: The internal NuttX logic uses the same interfaces as does
                the application.  That sometime produces a problem because
                there is "overloaded" functionality in those user interfaces
-               that are not desireable.
+               that are not desirable.
 
                For example, having cancellation points hidden inside of the
                OS can cause non-cancellation point interfaces to behave
-               strangely.  There was a change recently in pthread_cond_wait()
-               and pthread_cond_timedwait() recently to effectively disable
-               the cancellation point behavior of sem_wait().  This was
-               accomplished with two functions:  pthread_disable_cancel()
-               and pthread_enable_cancel()
+               strangely.
 
                Here is another issue:  Internal OS functions should not set
                errno and should never have to look at the errno value to
@@ -217,7 +218,7 @@ o Task/Scheduler (sched/)
 
                Both of these could be fixed if there were special internal
                versions these functions.  For example, there could be a an
-               nx_sem_wait() that does all of the same things as sem_wait()
+               nxsem_wait() that does all of the same things as sem_wait()
                was does not create a cancellation point and does not set
                the errno value on failures.
 
@@ -226,21 +227,47 @@ o Task/Scheduler (sched/)
                wrapper around nx_sem_wait() that adds the cancellation point
                and that sets the errno value on failures.
 
+               On particularly difficult issue is the use of common memory
+               manager C, and NX libraries in the build.  For the FLAT
+               build, that is not such a issue because the OS internal
+               versions of the interfaces can be used.  But is a difficult
+               problem for PROTECTED and KERNEL builds where the OS links
+               with a different version of the libraries than does the
+               application:  The OS version would use the OS internal
+               interfaces and the application would use the standard
+               interfaces.
+
+               But that raises yet another issue:  If the application
+               version of the libraries use the standard interfaces
+               internally, then they may generate unexpected cancellation
+               points.  For example, the memory management would take a
+               semaphore using sem_wait() to get exclusive access to the
+               heap.  That means that every call to malloc() and free()
+               would be a cancellation point, a clear POSIX violation.
+
                Changes like that could clean up some of this internal
-               craziness.  The condition variable change described above is
-               really a "bandaid" to handle the case that sem_wait() is a
-               cancellation point.  Also will need to revisit previous changes
-               like:
+               craziness.
 
-                 commit b4747286b19d3b15193b2a5e8a0fe48fa0a8638c
-                 Author: Juha Niskanen (Haltian) <juha.niskanen@haltian.com>
-                 Date:   Tue Apr 11 11:03:25 2017 -0600
-
-                     Add logic to disable cancellation points within the OS.
-                     This is useful when an internal OS function that is NOT
-                     a cancellation point calls an OS function which is a
-                     cancellation point.  In that case, irrecoverable states
-                     may occur if the cancellation is within the OS.
+               UPDATE:
+               2017-10-03:  This change has been completed for the case of
+                 semaphores used in the OS.  Still need to checkout signals
+                 and messages queues that are also used in the OS.  Also
+                 backed out commit b4747286b19d3b15193b2a5e8a0fe48fa0a8638c.
+               2017-10-06:  This change has been completed for the case of
+                 signals used in the OS.  Still need to checkout messages
+                 queues that are also used in the OS.
+               2017-10-10:  This change has been completed for the case of
+                 message queue used in the OS.  I am keeping this issue
+                 open because (1) there are some known remaining calls that
+                 that will modify the errno (such as dup(), dup2(),
+                 task_activate(), kthread_create(), exec(), mq_open(),
+                 mq_close(), and others) and (2) there may still be calls that
+                 create cancellation points.  Need to check things like open(),
+                 close(), read(), write(), and possibly others.
+               2018-01-30:  This change has been completed for the case of
+                 scheduler functions used within the OS:  sched_getparam(),
+                 sched_setparam(), sched_getscheduler(), sched_setschedule(),
+                 and sched_setaffinity(),
 
   Status:      Open
   Priority:    Low.  Things are working OK the way they are.  But the design
@@ -281,12 +308,13 @@ o Task/Scheduler (sched/)
                   ./risc-v/src/common/up_internal.h:EXTERN uint32_t g_idle_topstack;
                   ./x86/src/common/up_internal.h:extern uint32_t g_idle_topstack;
 
-                  That omits there architectures: sh1, sim, xtensa, z16, z80,
+                  That omits these architectures: sh1, sim, xtensa, z16, z80,
                   ez80, and z8.  All would have to support this common
                   globlal variable.
 
                   Also, the stack itself may be 8-, 16-, or 32-bits wide,
-                  depending upon the architecture.
+                  depending upon the architecture and do have differing
+                  alignment requirements.
 
                2. Another problem is colorizing that stack to use with
                  stack usage monitoring logic.  There is logic in some
@@ -306,6 +334,59 @@ o Task/Scheduler (sched/)
                  But no others.
   Status:     Open
   Priority:   Low, only needed for more complete debug.
+
+  Title:       PRIORITY INHERITANCE WITH SPORADIC SCHEDULER
+  Description: The sporadic scheduler manages CPU utilization by a task by
+               alternating between a high and a low priority.  In either
+               state, it may have its priority boosted.  However, under
+               some circumstances, it is impossible in the current design to
+               switch to the correct priority if a semaphore held by the
+               sporadic thread is participating in priority inheritance:
+
+               There is an issue when switching from the high to the low
+               priority state.  If the priority was NOT boosted above the
+               higher priority, it still may still need to boosted with
+               respect to the lower priority.  If the highest priority
+               thread waiting on a semaphore held by the sporadic thread is
+               higher in priority than the low priority but less than the
+               higher priority, then new thread priority should be set to
+               that middle priority, not to the lower priority.
+
+               In order to do this we would need to know the highest
+               priority from among all tasks waiting for the all semaphores
+               held by the sporadic task.  That information could be
+               retained by the priority inheritance logic for use by the
+               sporadic scheduler.  The boost priority could be retained in
+               a new field of the TCB (say, pend_priority).  That
+               pend_priority could then be used when switching from the
+               higher to the lower priority.
+  Status:      Open
+  Priority:    Low.  Does anyone actually use the sporadic scheduler?
+
+  Title:       SIMPLIFY SPORADIC SCHEDULER DESIGN
+  Description: I have been planning to re-implement sporadic scheduling for
+               some time.  I believe that the current implementation is
+               unnecessarily complex.  There is no clear statement for the
+               requirements of sporadic scheduling that I could find, so I
+               based the design on some behaviors of another OS that I saw
+               published (QNX as I recall).
+
+               But I think that the bottom line requirement for sporadic
+               scheduling is that is it should make a best attempt to
+               control a fixed percentage of CPU bandwidth for a task in
+               during an interval only by modifying it is priority between
+               a low and a high priority.  The current design involves
+               several timers:  A "budget" timer plus a variable number of
+               "replenishment" timers and a lot of nonsense to duplicate QNX
+               behavior that I think I not necessary.
+
+               It think that the sporadic scheduler could be re-implemented
+               with only the single "budget" timer.  Instead of starting a
+               new "replenishment" timer when the task is resumed, that
+               single timer could just be extended.
+  Status:      Open
+  Priority:    Low.  This is an enhancement.  And does anyone actually use
+               the sporadic scheduler?
 
 o SMP
   ^^^
@@ -532,58 +613,10 @@ o pthreads (sched/pthreads)
                 solution. So I discarded a few hours of programming. Not a
                 big loss from the experience I gained."
 
-  Title:       ISSUES WITH CANCELLATION POINTS
-  Description: According to POIX cancellation points must occur when a thread is executing
-               the following functions.  There are some execptions as noted:
-
-                accept()             mq_timedsend()           NA putpmsg()          sigtimedwait()
-             04 aio_suspend()     NA msgrcv()                    pwrite()        NA sigwait()
-             NA clock_nanosleep() NA msgsnd()                    read()             sigwaitinfo()
-                close()           NA msync()                  NA readv()         01 sleep()
-                connect()            nanosleep()                 recv()          02 system()
-             -- creat()              open()                      recvfrom()      NA tcdrain()
-                fcntl()              pause()                  NA recvmsg()       01 usleep()
-             NA fdatasync()          poll()                      select()        -- wait()
-                fsync()              pread()                     sem_timedwait()    waitid()
-             NA getmsg()          NA pselect()                   sem_wait()         waitpid()
-             NA getpmsg()            pthread_cond_timedwait()    send()             write()
-             NA lockf()              pthread_cond_wait()      NA sendmsg()       NA writev()
-                mq_receive()         pthread_join()              sendto()
-                mq_send()            pthread_testcancel()     03 sigpause()
-                mq_timedreceive() NA putmsg()                    sigsuspend()
-
-                  NA Not supported
-                  -- Doesn't need instrumentation.  Handled by lower level calls.
-                  nn See note nn
-
-               NOTE 01: sleep() and usleep() are user-space functions in the C library and cannot
-               serve as cancellation points.  They are, however, simple wrappers around nanosleep
-               which is a true cancellation point.
-               NOTE 02: system() is actually implemented in apps/ as part of NSH.  It cannot be
-               a cancellation point.
-               NOTE 03: sigpause() is a user-space function in the C library and cannot serve as
-               cancellation points.  It is, however, a simple wrapper around sigsuspend()
-               which is a true cancellation point.
-               NOTE 04: aio_suspend() is a user-space function in the C library and cannot serve as
-               cancellation points.  It does call around sigtimedwait() which is a true cancellation
-               point.
-  Status:      Not really open.  This is just the way it is.
-  Priority:    Nothing additional is planned.
-
-  Title:       PTHREAD FILES IN WRONG LOCATION
-  Description: There are many pthread interface functions in files located in
-               sched/pthread.  These should be moved from that location to
-               libc/pthread.  In the flat build, this really does not matter,
-               but in the protected build that location means that system calls
-               are required to access the pthread interface functions.
-  Status:      Open
-  Priority:    Medium-low. Priority may be higher if system call overheade becomes
-               an issue.
-
   Title:       INAPPROPRIATE USE OF sched_lock() BY pthreads
   Description: In implementation of standard pthread functions, the non-
                standard, NuttX function sched_lock() is used.  This is very
-               strong sense it disables pre-emption for all threads in all
+               strong since it disables pre-emption for all threads in all
                task groups.  I believe it is only really necessary in most
                cases to lock threads in the task group with a new non-
                standard interface, say pthread_lock().
@@ -598,9 +631,9 @@ o pthreads (sched/pthreads)
                This is an easy change:  pthread_lock() and pthread_unlock()
                would simply operate on a semaphore retained in the task
                group structure.  I am, however, hesitant to make this change:
-               I the flat build model, there is nothing that prevents people
+               In the FLAT build model, there is nothing that prevents people
                from accessing the inter-thread controls from threads in
-               differnt task groups.  Making this change, while correct,
+               different task groups.  Making this change, while correct,
                might introduce subtle bugs in code by people who are not
                using NuttX correctly.
   Status:      Open
@@ -625,16 +658,7 @@ o Kernel/Protected Build
 
                COMMAND  KERNEL INTERFACE(s)
                -------- ----------------------------------------------
-               mkfatfs  mkfatfs
                mkrd     ramdisk_register()
-               ping     icmp_ping()
-               mount    foreach_mountpoint()
-
-               The busybox mkfatfs does not involve any OS calls; it does
-               its job by simply opening the block driver (using open/xopen)
-               and modifying it with write operations. See:
-
-                 http://git.busybox.net/busybox/tree/util-linux/mkfs_vfat.c
 
   Status:      Open
   Priority:    Medium/High -- the kernel build configuration is not fully fielded
@@ -650,11 +674,9 @@ o Kernel/Protected Build
                These functions still call directly into operating system
                functions:
 
-                 - cdcacm_classobject - Called from apps/system/composite.
                  - usbmsc_configure - Called from apps/system/usbmsc and
                    apps/system/composite
-                 - usbmsc_bindlun - Called from apps/system/usbmsc and
-                   apps/system/composite
+                 - usbmsc_bindlun - Called from apps/system/usbmsc
                  - usbmsc_exportluns - Called from apps/system/usbmsc.
 
   Status:      Open
@@ -696,9 +718,10 @@ o Kernel/Protected Build
 
                Obviously system performance could be improved greatly by simply
                optimizing these functions so that they do not need to system calls
-               so frequently.  getpid() is (I believe) part of the re-entrant
-               semaphore logic.  Something like TLS might be used to retain the
-               thread's ID locally.
+               so frequently.  This getpid() call is part of the re-entrant
+               semaphore logic used with printf() and other C buffered I/O.
+               Something like TLS might be used to retain the thread's ID
+               locally.
 
                Linux, for example, has functions call up() and down().  up()
                increments the semaphore count but does not call into the kernel
@@ -707,11 +730,11 @@ o Kernel/Protected Build
                the count becomes negative the caller must be blocked.
 
                Update:
-               "I am thinking that there should be a "magic" global, user-accessible
-                variable that holds the PID of the currently executing thread;
-                basically the PID of the task at the head of the ready-to-run list.
-                This variable would have to be reset each time the head of the ready-
-                to-run list changes.
+               "I am thinking that there should be a "magic" global, user-
+                accessible variable that holds the PID of the currently
+                executing thread; basically the PID of the task at the head
+                of the ready-to-run list. This variable would have to be reset
+                each time the head of the ready-to-run list changes.
 
                "Then getpid() could be implemented in user space with no system call
                 by simply reading this variable.
@@ -729,6 +752,21 @@ o Kernel/Protected Build
                Update:
                One solution might be to used CONFIG_TLS, add the PID to struct
                tls_info_s.  Then the PID could be obtained without a system call.
+               TLS is not very useful in the FLAT build, however.  TLS works by
+               putting per-thread data at the bottom of an aligned stack.  The
+               current stack pointer is the ANDed with the alignment mask to
+               obtain the per-thread data address.
+
+               There are problems with this in the FLAT and PROTECTED builds:
+               First the maximum size of the stack is limited by the number
+               of bits in the mask.  This means that you need to have a very
+               high alignment to support tasks with large stacks.  But
+               secondly, the higher the alignment of the stacks stacks, the
+               more memory is lost to fragmentation.
+
+               In the KERNEL build, the the stack lies at a virtual address
+               and it is possible to have highly aligned stacks with no such
+               penalties.
   Status:      Open
   Priority:    Low-Medium.  Right now, I do not know if these syscalls are a
                real performance issue or not.  The above statistics were collected
@@ -768,8 +806,7 @@ o Kernel/Protected Build
   Title:       USER MODE TASKS CAN MODIFY PRIVILEGED TASKS
   Description: Certain interfaces, such as sched_setparam(),
                sched_setscheduler(), etc. can be used by user mode tasks to
-               modify the behavior of priviledged kernel threads.
-               task_delete() could even be used to kill a kernel thread.
+               modify the behavior of privileged kernel threads.
                For a truly secure system.  Privileges need to be checked in
                every interface that permits one thread to modify the
                properties of another thread.
@@ -779,6 +816,10 @@ o Kernel/Protected Build
                might also want to be able to modify privileged threads from
                user tasks with certain permissions.  Permissions is a much
                more complex issue.
+
+               task_delete(), for example, is not permitted to kill a kernel
+               thread.  But should not a privileged user task be able to do
+               so?
   Status:      Open
   Priority:    Low for most embedded systems but would be a critical need if
                NuttX were used in a secure system.
@@ -1042,30 +1083,18 @@ o Network (net/, drivers/net)
   Title:       POLL/SELECT ON TCP/UDP SOCKETS NEEDS READ-AHEAD
   Description: poll()/select() only works for availability of buffered TCP/UDP
                read data (when read-ahead is enabled).  The way writing is
-               handled in the network layer, all sockets must wait when send and
-               cannot be notified when they can send without waiting.
+               handled in the network layer, either (1) If CONFIG_UDP/TCP_WRITE_BUFFERS=y
+               then we never have to wait to send; otherwise, we always have
+               to wait to send.  So it is impossible to notify the caller
+               when it can send without waiting.
+
+               An exception "never having to wait" is the case where we are
+               out of memory for use in write buffering.  In that case, the
+               blocking send()/sendto() would have to wait for the memory
+               to become available.
   Status:      Open, probably will not be fixed.
   Priority:    Medium... this does effect porting of applications that expect
                different behavior from poll()/select()
-
-  Title:       SOCKETS DO NOT ALWAYS SUPPORT O_NONBLOCK
-  Description: sockets do not support all modes for O_NONBLOCK. Sockets
-               support nonblocking operations only (1) for TCP/IP non-
-               blocking read operations when read-ahead buffering is
-               enabled, (2) TCP/IP accept() operations when TCP/IP
-               connection backlog is enabled, (2) UDP/IP read() operations
-               when UDP read-ahead is enabled, and (3) non-blocking
-               operations on Unix domain sockets.
-  Status:      Open
-  Priority:    Low.
-
-  Title:       UNFINISHED CRYSTALLAN CS89X0 DRIVER
-  Description: I started coding a CrystalLan CS89x0 driver (drivers/net/cs89x0.c),
-               but never finished it.
-  Status:      Closed.
-  Priority:    Low.  I don't plan to finish the CS89x0 driver.  It is just
-               history now.  The unfinished coded is retained in case someone
-               needs to resurrect it.
 
   Title:       INTERFACES TO LEAVE/JOIN IGMP MULTICAST GROUP
   Description: The interfaces used to leave/join IGMP multicast groups is non-standard.
@@ -1099,8 +1128,8 @@ o Network (net/, drivers/net)
                however.  Others support the address filtering interfaces but
                have never been verifed:
 
-               C5471, LM3S, ez80, DM0x90 NIC, PIC: Do not support address
-                 filtering.
+               C5471, LM3S, ez80, DM0x90 NIC, PIC, LPC54: Do not support
+                 address filtering.
                Kinetis, LPC17xx, LPC43xx:  Untested address filter support
 
   Status:      Open
@@ -1300,6 +1329,52 @@ o Network (net/, drivers/net)
                ioctl(_socket_fd, SIOCGIFBRDADDR, &bc_addr);
   Status:      Open
   Priority:    Medium
+
+  Title:       TCP ISSUES WITH QUICK CLOSE
+  Description: This failure has been reported in the accept() logic:
+
+               - psock_tcp_accept() waits on net_lockedwait() below
+               - The accept operation completes, the socket is in the connected
+                 state and psock_accept() is awakened.  It cannot run,
+                 however, because its priority is low and so it is blocked
+                 from execution.
+               - In the mean time, the remote host sends a
+                 packet which is presumably caught in the read-ahead buffer.
+              - Then the remote host closes the socket.  Nothing happens on
+                 the target side because net_start_monitor() has not yet been
+                 called.
+               - Then accept() finally runs, but not with a connected but
+                 rather with a disconnected socket.  This fails when it
+                 attempts to start the network monitor on the disconnected
+                socket below.
+               - It is also impossible to read the buffered TCP data from a
+                 disconnected socket.  The TCP recvfrom() logic would also
+                 need to permit reading buffered data from a disconnected
+                 socket.
+
+               This problem was report when the target hosted an FTP server
+               and files were being accessed by FileZilla.
+
+               connect() most likely has this same issue.
+
+               A work-around might be to raise the priority of the thread
+               that calls accept().  accept() might also need to check the
+               tcpstateflags in the connection structure before returning
+               in order to assure that the socket truly is connected.
+  Status:      Open
+  Priority:    Medium.  I have never heard of this problem being reported
+               before, so I suspect it might not be so prevalent as one
+               might expect.
+
+  Title:       LOCAL DATAGRAM RECVFROM RETURNS WRONG SENDER ADDRESS
+  Description: The recvfrom logic for local datagram sockets returns the
+               incorrect sender "from" address.  Instead, it returns the
+               receiver's "to" address.  This means that returning a reply
+               to the "from" address receiver sending a packet to itself.
+  Status:      Open
+  Priority:    Medium High.  This makes using local datagram sockets in
+               anything but a well-known point-to-point configuration
+               impossible.
 
 o USB (drivers/usbdev, drivers/usbhost)
   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1679,7 +1754,6 @@ o Libraries (libc/, libm/)
 
                Generates this incorrect output:
 
-
                NuttShell (NSH) NuttX-7.20
                nsh> hello
                Hello, World!!
@@ -1742,14 +1816,10 @@ o File system / Generic drivers (fs/, drivers/)
                  intended for deeply embedded environments where there are
                  not multiple users with varying levels of trust.
 
-               truncate - The standard way of setting a fixed file size.
-                 Often used with random access, data base files.  There is no
-                 simple way of doing that now (other than just writing data
-                 to the file).
-
                link, unlink, softlink, readlink - For symbolic links.  Only
                  the ROMFS file system currently supports hard and soft links,
-                 so this is not too important.
+                 so this is not too important.  The top-level, psuedo-file
+                 system supports soft links.
 
                File locking
 
@@ -1761,6 +1831,8 @@ o File system / Generic drivers (fs/, drivers/)
 
                True inodes - Standard Unix inodes.  Currently only supported
                  by ROMFs.
+
+               File times, for example as set by utimes().
 
                The primary obstacle to all these is that each would require
                changes to all existing file systems.  That number is pretty
@@ -1823,7 +1895,7 @@ o File system / Generic drivers (fs/, drivers/)
                (using pctl() instead sysctl()).  My objective was to be able
                to control the number of available file descriptors on a task-
                by-task basis.  The complexity due to the partitioning of
-               desciptor space in a range for file descriptors and a range
+               descriptor space in a range for file descriptors and a range
                for socket descriptors made this feature nearly impossible to
                implement.
   Status:      Open
@@ -1905,8 +1977,8 @@ o File system / Generic drivers (fs/, drivers/)
                4) When comparing the checksum in the long file name
                   entry with the checksum of the short file name, the
                   checksum fails and the entire directory sequence is
-                  ignored by readder() logic.  This the file does not
-                  appear in the 'ls'.
+                  ignored by readdir() logic.  This is why the file does
+                  not appear in the 'ls'.
 
 o Graphics Subsystem (graphics/)
   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1987,38 +2059,7 @@ o Graphics Subsystem (graphics/)
   Priority:    Low, not a serious issue but worth noting.  There is no plan
                to change this behavior.
 
-  Title:       REMOVE SINGLE USER MODE
-  Description: NX graphics supports two modes:  A simple single user mode and
-               more complex multi-user mode selected with CONFIG_NX_MULTIUSER=y.
-               In this configuration, an application can start the NX server
-               with boardctrl(BOARDIOC_NX_START);  After that, all graphic
-               interactions are via a thin layer in libnx/.   The OS
-               interface is only via messages sent and received using POSIX
-               message queues.  So this is good code and respects all of the
-               POSIX interfacing rules.  Hence, it works well in all build
-               modes (FLAT, PROTECTED, and KERNEL builds).
-
-               But without CONFIG_NX_MULTIUSER, the single user applications
-               violate all of the rules and calls internal NX functions
-               directly.  This includes all calls to internal OSfunctions
-               with names like, nx_open, up_fbinitialize, board_lcd_*, and
-               others.  This is a violation of interfacing standard in all
-               cases and can only be made to work in the FLAT build mode.
-
-               The single user mode does have some desirable properties:  It
-               is lighter weight and so more suitable for very resource limited
-               platforms.  But I think that in the long run the only reasonable
-               solution is to eliminate the single user mode and provide only
-               the multi-user mode with the message queue interface.
-  Status:      Open
-  Priority:    Low-Medium, not a serious issue but worth noting.  Single user
-               mode is a blemish on the OS and not compatible with the RTOS
-               roadmap.  But neither is there any critical necessity to
-               remove the offending code immediately.  Be aware:  If you use
-               the single user mode, it will be yanked out from under your
-               feet in the not-so-distant future.
-
-  Title:       WIDE-FOUNT SUPPORT
+  Title:       WIDE-FONT SUPPORT
   Description: Wide fonts are not currently supported by the NuttX graphics sub-
                system.  There is some discussion here:
 
@@ -2027,6 +2068,27 @@ o Graphics Subsystem (graphics/)
 
   Status:      Open
   Priority:    Low for many, but I imagine higher in countries that use wide fonts
+
+  Title:       LOW-RES FRAMEBUFFER RENDERERING
+  Description: There are obvious issues in the low-res, < 8 BPP, implemenation of
+               the framebuffer rendering logic of graphics/nxglib/fb.  I see two
+               obvious problems in reviewing nxglib_copyrectangle():
+
+               1. The masking logic might work 1 BPP, but is insufficient for other
+                  resolutions like 2-BPP and 4-BPP.
+               2. The use of lnlen will not handle multiple bits per pixel.  It
+                  would need to be converted to a byte count.
+
+               The function PDC_copy_glyph() in the file apps/graphics/pdcurs34/nuttx/pdcdisp.c
+               derives from nxglib_copyrectangle() and all of those issues have been
+               resolved in that file.
+
+               Other frambuffer rendering functions probably have similar issues.
+  Status:      Open
+  Priority:    Low.  It is not surprising that there would be bugs in this logic:
+               I have never encountered a hardware framebuffer with sub-byte pixel
+               depth.  If such a beast ever shows up, then this priority would be
+               higher.
 
 o Build system
   ^^^^^^^^^^^^
@@ -2043,103 +2105,6 @@ o Build system
                   some new argument, perhaps -u.
   Status:      Open
   Priority:    Low.
-
-  Title:       CONTROL-C CAN BREAK DEPENDENCIES
-  Description: If you control C out of a make, then there are things that can go
-               wrong.  For one, you can break the dependencies in this scenario:
-
-               - The build in a given directory begins with all of the compilations.
-                 On terminal, this the long phase with CC: on each line.  As each
-                 .o file is created, it is timestamped with the current time.
-
-               - The dependencies on each .o are such that the C file will be re-
-                 compile if the .o file is OLDER that the corresponding .a archive
-                 file.
-
-               - The compilation phase is followed by a single, relatively short
-                 AR: phase that adds each of the file to the .a archive file.  As
-                 each file is added to archive, the timestamp of the of archive is
-                 updated to the current time.  After the first .o file has been
-                 added, then archive file will have a newer timestamp than any of
-                 the newly compiled .o file.
-
-               - If the user aborts with control-C during this AR: phase, then we
-                 are left with:  (1) not all of the files have bee added to the
-                 archive, and (2) the archive file has a newer timestamp than any
-                 of the .o file.
-
-               So when the make is restarted after a control, the dependencies will
-               see that the .a archive file has the newer time stamp and those .o
-               file will never be added to the archive until the directory is cleaned
-               or some other dependency changes.
-
-               NOTE: This may not really be an issue because the the timestamp on
-               libapps.a is not really used but rather the timestamp on an empty
-               file:
-
-               .built: $(OBJS)
-                   $(call ARCHIVE, $(BIN), $(OBJS))
-                   $(Q) touch $@
-
-               UPDATE: But there is another way that Control-C can break dependencies:
-               If you control-c out of the make during the apps/ part of the build,
-               the archive at apps/libapps.a is deleted (but all of the .built files
-               remain in place).  You can see this in the make outout, for example:
-
-                 CC:  ieee802154_getsaddr.c
-                 make[2]: *** [Makefile:104: ieee802154_getsaddr.o] Interrupt
-                 make: *** Deleting file '../apps/libapps.a'
-
-               When you rebuild the system, the first file archived will recreate
-               libapps.a and set the timestamp to the current time.  Then, none of
-               the other object files will be added to the archive because they are
-               all older.. or, more correctly, none of the other object files will
-               be addred because .built files remained and say that there is no
-               need to update the libapps.a file.
-
-               The typical symptom of such an issue is a link time error like:
-
-                 LD: nuttx libsched.a(os_bringup.o): In function `os_bringup':
-                 os_bringup.c:(.text+0x34): undefined reference to `nsh_main'
-
-               This is becuase the libapps.a file was deleted and an new empty
-               libapps.a file was created (which the object containing nsh_main()).
-               The object containing nsh_main() will not be added because the
-               .built file exists and says that there is not need to add the
-               nsh_main() object to libapps.a.
-
-               The work-around for now is:
-
-                 $ make apps_distclean
-
-               One solution to this might be to making the special target
-               .PRECIOUS depend on apps/libapps.a.  Then if make receives a
-               signal, it will not delete apps/libapps.a.  This would have to
-               be done in all Makefiles.
-
-   Status      Open
-   Priority:   Medium-High.  It is a rare event that control-C happens at just the
-               point in time.  However, when it does occur the resulting code may
-               have binary incompatiblies in the code taken from the out-of-sync
-               archives and cost a lot of debug time before you realize the issue.
-
-               The first stated problem is not really an issue:  There is already
-               the spurious .built file that should handle the described case:
-               If you control-C out of the build then the timestamp on the .built
-               file will not be updated and the archiving should be okay on the
-               next build.
-
-               A work-around for the second stated problem is to do 'make clean'
-               if you ever decide to control-C out of a make and see that the
-               libapps.a file was deleted.
-
-               UPDATE:  This is a potential fix for the second problem in place
-               in in all Makefiles under apps/.  This fix adds
-
-                 .PRECIOUS: $(BIN)
-
-               to all Makefiles.  It has not yet been confirmed that this fix
-               eliminates the dependency issue or not.
 
 o Other drivers (drivers/)
   ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -2371,11 +2336,11 @@ o Modbus (apps/modbus)
 
   Title:       MODBUS NOT USABLE WITH USB SERIAL
   Description: Modbus can be used with USB serial, however, if the USB
-               serial connectiont is lost, Modbus will hang in an infinite
+               serial connection is lost, Modbus will hang in an infinite
                loop.
 
                This is a problem in the handling of select() and read()
-               and could probabaly resolved by studying the Modbus error
+               and could probably resolved by studying the Modbus error
                handling.
 
                A more USB-friendly solution would be to: (1) Re-connect and

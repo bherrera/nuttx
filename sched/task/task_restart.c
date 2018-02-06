@@ -63,11 +63,11 @@
  *   reinitialized with same ID, priority, original entry point, stack size,
  *   and parameters it had when it was first started.
  *
- * Inputs:
+ * Input Parameters:
  *   pid - The task ID of the task to delete.  An ID of zero signifies the
  *         calling task.
  *
- * Return Value:
+ * Returned Value:
  *   OK on sucess; ERROR on failure.
  *
  *   This function can fail if:
@@ -158,7 +158,7 @@ int task_restart(pid_t pid)
 
   /* Deallocate anything left in the TCB's queues */
 
-  sig_cleanup((FAR struct tcb_s *)tcb); /* Deallocate Signal lists */
+  nxsig_cleanup((FAR struct tcb_s *)tcb); /* Deallocate Signal lists */
 
   /* Reset the current task priority  */
 

@@ -1,7 +1,7 @@
 /****************************************************************************
  * libc/wqueue/work_usrthread.c
  *
- *   Copyright (C) 2009-2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2009-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -47,8 +47,9 @@
 #include <assert.h>
 #include <queue.h>
 
-#include <nuttx/wqueue.h>
+#include <nuttx/semaphore.h>
 #include <nuttx/clock.h>
+#include <nuttx/wqueue.h>
 
 #include "wqueue/wqueue.h"
 
@@ -93,10 +94,6 @@ pthread_mutex_t g_usrmutex;
 #endif
 
 /****************************************************************************
- * Private Data
- ****************************************************************************/
-
-/****************************************************************************
  * Private Functions
  ****************************************************************************/
 
@@ -109,7 +106,7 @@ pthread_mutex_t g_usrmutex;
  *   part of the internal implementation of each work queue; it should not
  *   be called from application level logic.
  *
- * Input parameters:
+ * Input Parameters:
  *   wqueue - Describes the work queue to be processed
  *
  * Returned Value:
@@ -288,7 +285,7 @@ void work_process(FAR struct usr_wqueue_s *wqueue)
  *   miscellaneous operations.  The user work thread must be started by
  *   application start-up logic by calling work_usrstart().
  *
- * Input parameters:
+ * Input Parameters:
  *   argc, argv (not used)
  *
  * Returned Value:
@@ -330,7 +327,7 @@ static pthread_addr_t work_usrthread(pthread_addr_t arg)
  * Description:
  *   Start the user mode work queue.
  *
- * Input parameters:
+ * Input Parameters:
  *   None
  *
  * Returned Value:
@@ -350,7 +347,7 @@ int work_usrstart(void)
   {
     /* Set up the work queue lock */
 
-    (void)sem_init(&g_usrsem, 0, 1);
+    (void)nxsem_init(&g_usrsem, 0, 1);
 
     /* Start a user-mode worker thread for use by applications. */
 
@@ -363,7 +360,7 @@ int work_usrstart(void)
     DEBUGASSERT(g_usrwork.pid > 0);
     if (g_usrwork.pid < 0)
       {
-        int errcode = errno;
+        int errcode = get_errno();
         DEBUGASSERT(errcode > 0);
         return -errcode;
       }

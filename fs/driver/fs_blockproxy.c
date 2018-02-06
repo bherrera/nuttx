@@ -1,7 +1,7 @@
 /****************************************************************************
  * fs/driver/fs_blockproxy.c
  *
- *   Copyright (C) 2015-2016 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2015-2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -77,7 +77,7 @@ static sem_t g_devno_sem = SEM_INITIALIZER(1);
  *   psuedo-file system.  We cannot use mktemp for this because it will
  *   attempt to open() the file.
  *
- * Input parameters:
+ * Input Parameters:
  *   None
  *
  * Returned Value:
@@ -100,15 +100,22 @@ static FAR char *unique_chardev(void)
     {
       /* Get the semaphore protecting the path number */
 
-      while (sem_wait(&g_devno_sem) < 0)
+      do
         {
-          DEBUGASSERT(errno == EINTR);
+          ret = nxsem_wait(&g_devno_sem);
+
+          /* The only case that an error should occur here is if the wait
+           * was awakened by a signal.
+           */
+
+          DEBUGASSERT(ret == OK || ret == -EINTR);
         }
+      while (ret == -EINTR);
 
       /* Get the next device number and release the semaphore */
 
       devno = ++g_devno;
-      sem_post(&g_devno_sem);
+      nxsem_post(&g_devno_sem);
 
       /* Construct the full device number */
 
@@ -139,7 +146,7 @@ static FAR char *unique_chardev(void)
  *   Create a temporary char driver using drivers/bch to mediate character
  *   oriented accessed to the block driver.
  *
- * Input parameters:
+ * Input Parameters:
  *   blkdev - The path to the block driver
  *   oflags - Character driver open flags
  *

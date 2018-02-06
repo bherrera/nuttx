@@ -88,12 +88,12 @@ static sem_t lock;
 
 static void aes_lock(void)
 {
-  sem_wait(&lock);
+  nxsem_wait(&lock);
 }
 
 static void aes_unlock(void)
 {
-  sem_post(&lock);
+  nxsem_post(&lock);
 }
 
 static void aes_memcpy(void *out, const void *in, size_t size)
@@ -225,7 +225,7 @@ int aes_cypher(void *out, const void *in, uint32_t size, const void *iv,
 
 int up_aesinitialize()
 {
-  sem_init(&lock, 0, 1);
+  nxsem_init(&lock, 0, 1);
   sam_aes_enableclk();
   putreg32(AES_CR_SWRST, SAM_AES_CR);
   return OK;

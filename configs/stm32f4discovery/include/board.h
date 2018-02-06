@@ -47,12 +47,6 @@
 #  include <stdbool.h>
 #endif
 
-#ifdef __KERNEL__
-#  include "stm32_rcc.h"
-#  include "stm32_sdio.h"
-#  include "stm32.h"
-#endif
-
 /************************************************************************************
  * Pre-processor Definitions
  ************************************************************************************/
@@ -319,13 +313,6 @@
 #define DMACHAN_I2S3_RX  DMAMAP_SPI3_RX_2
 #define DMACHAN_I2S3_TX  DMAMAP_SPI3_TX_2
 
-/* I2C config to use with Nunchuk PB7 (SDA) and PB8 (SCL) */
-
-#if 0
-#define GPIO_I2C1_SCL  GPIO_I2C1_SCL_2
-#define GPIO_I2C1_SDA  GPIO_I2C1_SDA_1
-#endif
-
 /* I2C.  Only I2C1 is available on the stm32f4discovery.  I2C1_SCL and I2C1_SDA are
  * available on the following pins:
  *
@@ -379,41 +366,4 @@
 
 #define DMAMAP_SDIO DMAMAP_SDIO_1
 
-/************************************************************************************
- * Public Data
- ************************************************************************************/
-
-#ifndef __ASSEMBLY__
-
-#undef EXTERN
-#if defined(__cplusplus)
-#define EXTERN extern "C"
-extern "C"
-{
-#else
-#define EXTERN extern
-#endif
-
-/************************************************************************************
- * Public Function Prototypes
- ************************************************************************************/
-
-/************************************************************************************
- * Name: stm32_boardinitialize
- *
- * Description:
- *   All STM32 architectures must provide the following entry point.  This entry point
- *   is called early in the initialization -- after all memory has been configured
- *   and mapped but before any devices have been initialized.
- *
- ************************************************************************************/
-
-void stm32_boardinitialize(void);
-
-#undef EXTERN
-#if defined(__cplusplus)
-}
-#endif
-
-#endif /* __ASSEMBLY__ */
 #endif  /* __CONFIG_STM32F4DISCOVERY_INCLUDE_BOARD_H */

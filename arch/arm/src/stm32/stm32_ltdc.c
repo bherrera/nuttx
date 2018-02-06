@@ -53,8 +53,6 @@
 #include <nuttx/semaphore.h>
 #include <nuttx/video/fb.h>
 
-#include <arch/chip/ltdc.h>
-#include <arch/chip/dma2d.h>
 #include <arch/board/board.h>
 
 #include "up_arch.h"
@@ -920,15 +918,7 @@ static const uintptr_t stm32_clutwr_layer_t[LTDC_NLAYERS] =
 static bool g_initialized;
 
 /****************************************************************************
- * Public Data
- ****************************************************************************/
-
-/****************************************************************************
  * Private Functions
- ****************************************************************************/
-
-/****************************************************************************
- * Configure global register
  ****************************************************************************/
 
 /****************************************************************************
@@ -1152,12 +1142,11 @@ static int stm32_ltdcirq(int irq, void *context, FAR void *arg)
 
       if (priv->wait)
         {
-          int ret = sem_post(priv->sem);
+          int ret = nxsem_post(priv->sem);
 
-          if (ret != OK)
+          if (ret < 0)
             {
-              lcderr("ERROR: sem_post() failed\n");
-              return ret;
+              lcderr("ERROR: nxsem_post() failed\n");
             }
         }
     }
@@ -1173,7 +1162,7 @@ static int stm32_ltdcirq(int irq, void *context, FAR void *arg)
  *   that a register reload was been completed.
  *   Note! The caller must use this function within a critical section.
  *
- * Return:
+ * Returned Value:
  *   OK - On success otherwise ERROR
  *
  ****************************************************************************/
@@ -1195,15 +1184,15 @@ static int stm32_ltdc_waitforirq(void)
 
       priv->wait = true;
 
-      ret = sem_wait(priv->sem);
+      ret = nxsem_wait(priv->sem);
 
       /* irq or an error occurs, reset the wait flag */
 
       priv->wait = false;
 
-      if (ret != OK)
+      if (ret < 0)
         {
-          lcderr("ERROR: sem_wait() failed\n");
+          lcderr("ERROR: nxsem_wait() failed\n");
         }
     }
 
@@ -1286,15 +1275,15 @@ static void stm32_global_configure(void)
 {
   /* Initialize the LTDC semaphore that enforces mutually exclusive access */
 
-  sem_init(&g_lock, 0, 1);
+  nxsem_init(&g_lock, 0, 1);
 
   /* Initialize the semaphore for interrupt handling.  This waitsem
    * semaphore is used for signaling and, hence, should not have priority
    * inheritance enabled.
    */
 
-  sem_init(g_interrupt.sem, 0, 0);
-  sem_setprotocol(g_interrupt.sem, SEM_PRIO_NONE);
+  nxsem_init(g_interrupt.sem, 0, 0);
+  nxsem_setprotocol(g_interrupt.sem, SEM_PRIO_NONE);
 
   /* Attach LTDC interrupt vector */
 
@@ -1374,10 +1363,6 @@ static void stm32_lcd_enable(bool enable)
   putreg32(regval, STM32_LTDC_GCR);
   reginfo("configured LTDC_GCR=%08x\n", getreg32(STM32_LTDC_GCR));
 }
-
-/****************************************************************************
- * Configure layer register
- ****************************************************************************/
 
 /****************************************************************************
  * Name: stm32_ltdc_lclutenable
@@ -1472,7 +1457,7 @@ static inline uint8_t stm32_ltdc_lgetopac(FAR struct stm32_layer_s *layer)
  * Parameter:
  *   layer - Reference to the layer control structure
  *
- * Return:
+ * Returned Value:
  *   true  - layer valid
  *   false - layer invalid
  *
@@ -1502,7 +1487,7 @@ static inline bool stm32_ltdc_lvalidate(FAR const struct stm32_layer_s *layer)
  *   srcxpos - Top left x position from where data visible in the active area
  *   srcypos - Top left y position from where data visible in the active area
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -1964,7 +1949,7 @@ static void stm32_ltdc_lenable(FAR struct stm32_layer_s *layer)
 }
 
 /****************************************************************************
- * Name stm32_ltdc_lclear
+ * Name: stm32_ltdc_lclear
  *
  * Description:
  *   Clear the whole layer
@@ -1973,7 +1958,7 @@ static void stm32_ltdc_lenable(FAR struct stm32_layer_s *layer)
  *   layer - Reference to the layer control structure
  *   color - The color to clear
  *
- * Return:
+ * Returned Value:
  *   OK      - On success
  *   -EINVAL - If one of the parameter invalid
  *
@@ -2187,14 +2172,14 @@ static void stm32_ltdc_linit(int lid)
  *   vtable - The framebuffer driver object
  *   vinfo  - the videoinfo object
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
  ****************************************************************************/
 
 static int stm32_getvideoinfo(struct fb_vtable_s *vtable,
-                                 struct fb_videoinfo_s *vinfo)
+                              struct fb_videoinfo_s *vinfo)
 {
   lcdinfo("vtable=%p vinfo=%p\n", vtable, vinfo);
   if (vtable)
@@ -2222,14 +2207,14 @@ static int stm32_getvideoinfo(struct fb_vtable_s *vtable,
  *   vtable - The framebuffer driver object
  *   pinfo  - the planeinfo object
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
  ****************************************************************************/
 
 static int stm32_getplaneinfo(struct fb_vtable_s *vtable, int planeno,
-                                 struct fb_planeinfo_s *pinfo)
+                              struct fb_planeinfo_s *pinfo)
 {
   lcdinfo("vtable=%p planeno=%d pinfo=%p\n", vtable, planeno, pinfo);
   if (vtable)
@@ -2257,7 +2242,7 @@ static int stm32_getplaneinfo(struct fb_vtable_s *vtable, int planeno,
  *   vtable - The framebuffer driver object
  *   cmap   - the color table
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -2265,7 +2250,7 @@ static int stm32_getplaneinfo(struct fb_vtable_s *vtable, int planeno,
 
 #ifdef STM32_LAYER_CLUT_SIZE
 static int stm32_getcmap(struct fb_vtable_s *vtable,
-                            struct fb_cmap_s *cmap)
+                         struct fb_cmap_s *cmap)
 {
 #ifdef CONFIG_STM32_LTDC_L2
   return stm32_getclut((FAR struct ltdc_layer_s *)&LAYER_L2, cmap);
@@ -2284,14 +2269,14 @@ static int stm32_getcmap(struct fb_vtable_s *vtable,
  *   vtable - The framebuffer driver object
  *   cmap   - the color table
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
  ****************************************************************************/
 
 static int stm32_putcmap(struct fb_vtable_s *vtable,
-                            const struct fb_cmap_s *cmap)
+                         const struct fb_cmap_s *cmap)
 {
 #ifdef CONFIG_STM32_LTDC_L2
   return stm32_setclut((FAR struct ltdc_layer_s *)&LAYER_L2, cmap);
@@ -2311,14 +2296,14 @@ static int stm32_putcmap(struct fb_vtable_s *vtable,
  *   layer  - Reference to the layer control structure
  *   vinfo  - Reference to the video info structure
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
  ****************************************************************************/
 
 static int stm32_lgetvideoinfo(struct ltdc_layer_s *layer,
-                                 struct fb_videoinfo_s *vinfo)
+                               struct fb_videoinfo_s *vinfo)
 {
   lcdinfo("layer=%p vinfo=%p\n", layer, vinfo);
   FAR struct stm32_layer_s *priv = (FAR struct stm32_layer_s *)layer;
@@ -2345,14 +2330,14 @@ static int stm32_lgetvideoinfo(struct ltdc_layer_s *layer,
  *   planeno - Number of the plane
  *   pinfo   - Reference to the plane info structure
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
  ****************************************************************************/
 
 static int stm32_lgetplaneinfo(struct ltdc_layer_s *layer, int planeno,
-                                 struct fb_planeinfo_s *pinfo)
+                               struct fb_planeinfo_s *pinfo)
 {
   FAR struct stm32_layer_s *priv = (FAR struct stm32_layer_s *)layer;
 
@@ -2379,7 +2364,7 @@ static int stm32_lgetplaneinfo(struct ltdc_layer_s *layer, int planeno,
  *   layer  - Reference to the layer structure
  *   cmap   - color lookup table with up the 256 entries
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -2387,7 +2372,7 @@ static int stm32_lgetplaneinfo(struct ltdc_layer_s *layer, int planeno,
 
 #ifdef STM32_LAYER_CLUT_SIZE
 static int stm32_setclut(struct ltdc_layer_s *layer,
-                        const struct fb_cmap_s *cmap)
+                         const struct fb_cmap_s *cmap)
 {
   FAR struct stm32_layer_s *priv = (FAR struct stm32_layer_s *)layer;
   int ret;
@@ -2396,7 +2381,7 @@ static int stm32_setclut(struct ltdc_layer_s *layer,
 
   if (stm32_ltdc_lvalidate(priv) && cmap)
     {
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
 
       if (priv->state.vinfo.fmt != FB_FMT_RGB8)
         {
@@ -2419,7 +2404,7 @@ static int stm32_setclut(struct ltdc_layer_s *layer,
           ret = OK;
         }
 
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return ret;
     }
@@ -2439,7 +2424,7 @@ static int stm32_setclut(struct ltdc_layer_s *layer,
  *   cmap  - Reference to valid color lookup table accept up the 256 color
  *           entries
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -2455,7 +2440,7 @@ static int stm32_getclut(struct ltdc_layer_s *layer,
 
   if (priv == &LAYER_L1 || priv == &LAYER_L2)
     {
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
 #ifdef CONFIG_STM32_DMA2D
       /* Note! We share the same color lookup table with the dma2d driver and
        * the getclut implementation works in the same way.
@@ -2514,7 +2499,7 @@ static int stm32_getclut(struct ltdc_layer_s *layer,
           ret = OK;
         }
 #endif
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return ret;
     }
@@ -2538,7 +2523,7 @@ static int stm32_getclut(struct ltdc_layer_s *layer,
  *           e.g. get the current active or inactive layer.
  *           See LTDC_LAYER_* for possible values
  *
- * Return:
+ * Returned Value:
  *   OK - On success
  *   Null if invalid flag
  *
@@ -2555,7 +2540,7 @@ static int stm32_getlid(FAR struct ltdc_layer_s *layer, int *lid,
     {
       int   ret = OK;
 
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
 
       switch (flag)
         {
@@ -2594,7 +2579,7 @@ static int stm32_getlid(FAR struct ltdc_layer_s *layer, int *lid,
             break;
         }
 
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return ret;
     }
@@ -2615,7 +2600,7 @@ static int stm32_getlid(FAR struct ltdc_layer_s *layer, int *lid,
  *   layer - Reference to the layer structure
  *   argb  - ARGB8888 color value
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error - -EINVAL
  *
@@ -2629,10 +2614,10 @@ static int stm32_setcolor(FAR struct ltdc_layer_s *layer, uint32_t argb)
 
   if (stm32_ltdc_lvalidate(priv))
     {
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
       priv->state.color = argb;
       priv->operation |= LTDC_LAYER_SETCOLOR;
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return OK;
     }
@@ -2651,7 +2636,7 @@ static int stm32_setcolor(FAR struct ltdc_layer_s *layer, uint32_t argb)
  *   layer - Reference to the layer structure
  *   argb  - Reference to store the ARGB8888 color value
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -2665,9 +2650,9 @@ static int stm32_getcolor(FAR struct ltdc_layer_s *layer, uint32_t *argb)
 
   if (stm32_ltdc_lvalidate(priv))
     {
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
       *argb = priv->state.color;
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return OK;
     }
@@ -2688,7 +2673,7 @@ static int stm32_getcolor(FAR struct ltdc_layer_s *layer, uint32_t *argb)
  *   layer  - Reference to the layer structure
  *   rgb   - RGB888 color value
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -2702,10 +2687,10 @@ static int stm32_setcolorkey(FAR struct ltdc_layer_s *layer, uint32_t rgb)
 
   if (stm32_ltdc_lvalidate(priv))
     {
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
       priv->state.colorkey = rgb;
       priv->operation |= LTDC_LAYER_SETCOLORKEY;
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return OK;
     }
@@ -2724,7 +2709,7 @@ static int stm32_setcolorkey(FAR struct ltdc_layer_s *layer, uint32_t rgb)
  *   layer  - Reference to the layer structure
  *   rgb    - Reference to store the RGB888 color key
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error   - -EINVAL
  *
@@ -2738,9 +2723,9 @@ static int stm32_getcolorkey(FAR struct ltdc_layer_s *layer, uint32_t *rgb)
 
   if (stm32_ltdc_lvalidate(priv))
     {
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
       *rgb = priv->state.colorkey;
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return OK;
     }
@@ -2765,7 +2750,7 @@ static int stm32_getcolorkey(FAR struct ltdc_layer_s *layer, uint32_t *rgb)
  *   layer - Reference to the layer structure
  *   alpha - Alpha value
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error - -EINVAL
  *
@@ -2779,10 +2764,10 @@ static int stm32_setalpha(FAR struct ltdc_layer_s *layer, uint8_t alpha)
 
   if (stm32_ltdc_lvalidate(priv))
     {
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
       priv->state.alpha = alpha;
       priv->operation  |= LTDC_LAYER_SETALPHAVALUE;
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return OK;
     }
@@ -2801,7 +2786,7 @@ static int stm32_setalpha(FAR struct ltdc_layer_s *layer, uint8_t alpha)
  *   layer - Reference to the layer structure
  *   alpha - Reference to store the alpha value
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error - -EINVAL
  *
@@ -2815,9 +2800,9 @@ static int stm32_getalpha(FAR struct ltdc_layer_s *layer, uint8_t *alpha)
 
   if (stm32_ltdc_lvalidate(priv))
     {
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
       *alpha = priv->state.alpha;
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return OK;
     }
@@ -2838,7 +2823,7 @@ static int stm32_getalpha(FAR struct ltdc_layer_s *layer, uint8_t *alpha)
  *   layer - Reference to the layer structure
  *   mode  - Blend mode (see LTDC_BLEND_*)
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error - -EINVAL
  *
@@ -2877,7 +2862,7 @@ static int stm32_setblendmode(FAR struct ltdc_layer_s *layer, uint32_t mode)
     {
       int         ret = OK;
 
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
 
       /* Disable colorkeying by default */
 
@@ -2952,7 +2937,7 @@ static int stm32_setblendmode(FAR struct ltdc_layer_s *layer, uint32_t mode)
                                    LTDC_LAYER_SETCOLORKEY);
         }
 
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
       return ret;
     }
 
@@ -2970,7 +2955,7 @@ static int stm32_setblendmode(FAR struct ltdc_layer_s *layer, uint32_t mode)
  *   layer - Reference to the layer structure
  *   mode  - Reference to store the blend mode
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error - -EINVAL
  ****************************************************************************/
@@ -2983,9 +2968,9 @@ static int stm32_getblendmode(FAR struct ltdc_layer_s *layer, uint32_t *mode)
 
   if (stm32_ltdc_lvalidate(priv))
     {
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
       *mode = priv->state.blendmode;
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return OK;
     }
@@ -3009,7 +2994,7 @@ static int stm32_getblendmode(FAR struct ltdc_layer_s *layer, uint32_t *mode)
  *   srcxpos - x position of the visible pixel of the whole layer
  *   srcypos - y position of the visible pixel of the whole layer
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error - -EINVAL
  *
@@ -3021,9 +3006,9 @@ static int stm32_getblendmode(FAR struct ltdc_layer_s *layer, uint32_t *mode)
  ****************************************************************************/
 
 static int stm32_setarea(FAR struct ltdc_layer_s *layer,
-                        FAR const struct ltdc_area_s *area,
-                        fb_coord_t srcxpos,
-                        fb_coord_t srcypos)
+                         FAR const struct ltdc_area_s *area,
+                         fb_coord_t srcxpos,
+                         fb_coord_t srcypos)
 {
   FAR struct stm32_layer_s *priv = (FAR struct stm32_layer_s *)layer;
 
@@ -3034,7 +3019,7 @@ static int stm32_setarea(FAR struct ltdc_layer_s *layer,
     {
       int ret;
 
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
 
       ret = stm32_ltdc_lvalidatearea(priv, area->xpos, area->ypos, area->xres,
                                     area->yres, srcxpos, srcypos);
@@ -3050,7 +3035,7 @@ static int stm32_setarea(FAR struct ltdc_layer_s *layer,
           priv->operation       |= LTDC_LAYER_SETAREA;
         }
 
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return ret;
     }
@@ -3071,15 +3056,15 @@ static int stm32_setarea(FAR struct ltdc_layer_s *layer,
  *   srcxpos - Reference to store the referenced x position of the whole layer
  *   srcypos - Reference to store the reterenced y position of the whole layer
  *
- * Return:
+ * Returned Value:
  *   On success - OK
  *   On error - -EINVAL
  *
  ****************************************************************************/
 
 static int stm32_getarea(FAR struct ltdc_layer_s *layer,
-                        FAR struct ltdc_area_s *area,
-                        fb_coord_t *srcxpos, fb_coord_t *srcypos)
+                         FAR struct ltdc_area_s *area,
+                         fb_coord_t *srcxpos, fb_coord_t *srcypos)
 {
   FAR struct stm32_layer_s *priv = (FAR struct stm32_layer_s *)layer;
 
@@ -3088,11 +3073,11 @@ static int stm32_getarea(FAR struct ltdc_layer_s *layer,
 
   if (stm32_ltdc_lvalidate(priv))
     {
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
       *srcxpos = priv->state.xpos;
       *srcypos = priv->state.ypos;
       memcpy(area, &priv->state.area, sizeof(struct ltdc_area_s));
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return OK;
     }
@@ -3111,7 +3096,7 @@ static int stm32_getarea(FAR struct ltdc_layer_s *layer,
  *   layer   - Reference to the layer structure
  *   mode    - operation mode
  *
- * Return:
+ * Returned Value:
  *    OK        - On success
  *   -EINVAL    - If one of the parameter invalid
  *   -ECANCELED - Operation cancelled, something goes wrong
@@ -3157,7 +3142,7 @@ static int stm32_update(FAR struct ltdc_layer_s *layer, uint32_t mode)
       bool    waitvblank = false;
       uint8_t reload = LTDC_SRCR_IMR;
 
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
 
       if (mode & LTDC_SYNC_VBLANK)
         {
@@ -3250,7 +3235,7 @@ static int stm32_update(FAR struct ltdc_layer_s *layer, uint32_t mode)
 
       stm32_ltdc_reload(reload, waitvblank);
 
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return OK;
     }
@@ -3274,7 +3259,7 @@ static int stm32_update(FAR struct ltdc_layer_s *layer, uint32_t mode)
  *   src      - Reference to the source layer
  *   srcarea  - Reference to the selected area of the source layer
  *
- * Return:
+ * Returned Value:
  *    OK      - On success
  *   -EINVAL  - If one of the parameter invalid or if the size of the selected
  *              source area outside the visible area of the destination layer.
@@ -3296,9 +3281,9 @@ static int stm32_blit(FAR struct ltdc_layer_s *dest,
     {
       int   ret;
 
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
       priv->dma2d->blit(priv->dma2d, destxpos, destypos, src, srcarea);
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return ret;
     }
@@ -3325,7 +3310,7 @@ static int stm32_blit(FAR struct ltdc_layer_s *dest,
  *   back     - Reference to the background layer
  *   backarea - Reference to the selected area of the background layer
  *
- * Return:
+ * Returned Value:
  *    OK      - On success
  *   -EINVAL  - If one of the parameter invalid or if the size of the selected
  *              source area outside the visible area of the destination layer.
@@ -3334,11 +3319,11 @@ static int stm32_blit(FAR struct ltdc_layer_s *dest,
  ****************************************************************************/
 
 static int stm32_blend(FAR struct ltdc_layer_s *dest,
-                        fb_coord_t destxpos, fb_coord_t destypos,
-                        FAR const struct dma2d_layer_s *fore,
-                        fb_coord_t forexpos, fb_coord_t foreypos,
-                        FAR const struct dma2d_layer_s *back,
-                        FAR const struct ltdc_area_s *backarea)
+                       fb_coord_t destxpos, fb_coord_t destypos,
+                       FAR const struct dma2d_layer_s *fore,
+                       fb_coord_t forexpos, fb_coord_t foreypos,
+                       FAR const struct dma2d_layer_s *back,
+                       FAR const struct ltdc_area_s *backarea)
 {
   FAR struct stm32_layer_s *priv = (FAR struct stm32_layer_s *)dest;
 
@@ -3351,10 +3336,10 @@ static int stm32_blend(FAR struct ltdc_layer_s *dest,
     {
       int   ret;
 
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
       priv->dma2d->blend(priv->dma2d, destxpos, destypos,
                         fore, forexpos, foreypos, back, backarea);
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return ret;
     }
@@ -3375,7 +3360,7 @@ static int stm32_blend(FAR struct ltdc_layer_s *dest,
  *   color    - Color to fill the selected area. Color must be formatted
  *              according to the layer pixel format.
  *
- * Return:
+ * Returned Value:
  *    OK      - On success
  *   -EINVAL  - If one of the parameter invalid or if the size of the selected
  *              area outside the visible area of the layer.
@@ -3383,8 +3368,8 @@ static int stm32_blend(FAR struct ltdc_layer_s *dest,
  ****************************************************************************/
 
 static int stm32_fillarea(FAR struct ltdc_layer_s *layer,
-                            FAR const struct ltdc_area_s *area,
-                            uint32_t color)
+                          FAR const struct ltdc_area_s *area,
+                          uint32_t color)
 {
   FAR struct stm32_layer_s *priv = (FAR struct stm32_layer_s *)layer;
 
@@ -3394,9 +3379,9 @@ static int stm32_fillarea(FAR struct ltdc_layer_s *layer,
     {
       int   ret;
 
-      sem_wait(priv->state.lock);
+      nxsem_wait(priv->state.lock);
       priv->dma2d->fillarea(priv->dma2d, area, color);
-      sem_post(priv->state.lock);
+      nxsem_post(priv->state.lock);
 
       return ret;
     }
@@ -3417,7 +3402,7 @@ static int stm32_fillarea(FAR struct ltdc_layer_s *layer,
  * Parameter:
  *   lid - Layer identifier
  *
- * Return:
+ * Returned Value:
  *   Reference to the layer control structure on success or Null if lid
  *   is invalid.
  *
@@ -3432,8 +3417,7 @@ FAR struct ltdc_layer_s *stm32_ltdcgetlayer(int lid)
       return (FAR struct ltdc_layer_s *) &LAYER(lid);
     }
 
-  lcderr("ERROR: Returning EINVAL\n");
-  errno = EINVAL;
+  lcderr("ERROR: lid invalid: %d\n", lid);
   return NULL;
 }
 #endif /* CONFIG_STM32_LTDC_INTERFACE */
@@ -3444,7 +3428,7 @@ FAR struct ltdc_layer_s *stm32_ltdcgetlayer(int lid)
  * Description:
  *   Initialize the ltdc controller
  *
- * Return:
+ * Returned Value:
  *   OK
  *
  ****************************************************************************/
@@ -3533,10 +3517,10 @@ int stm32_ltdcinitialize(void)
  *   Return a a reference to the framebuffer object for the specified video
  *   plane.
  *
- * Input parameters:
+ * Input Parameters:
  *   None
  *
- * Returned value:
+ * Returned Value:
  *   Reference to the framebuffer object (NULL on failure)
  *
  ****************************************************************************/

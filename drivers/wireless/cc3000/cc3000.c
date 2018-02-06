@@ -69,7 +69,9 @@
 #include <nuttx/kmalloc.h>
 #include <nuttx/clock.h>
 #include <nuttx/arch.h>
+#include <nuttx/signal.h>
 #include <nuttx/semaphore.h>
+#include <nuttx/mqueue.h>
 #include <nuttx/fs/fs.h>
 #include <nuttx/spi/spi.h>
 
@@ -213,21 +215,26 @@ uint8_t spi_readCommand[] = READ_COMMAND;
 
 static inline void cc3000_devtake(FAR struct cc3000_dev_s *priv)
 {
-  /* Take the semaphore (perhaps waiting) */
+  int ret;
 
-  while (sem_wait(&priv->devsem) < 0)
+  do
     {
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&priv->devsem);
+
       /* The only case that an error should occur here is if the wait was
        * awakened by a signal.
        */
 
-      DEBUGASSERT(errno == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 static inline void cc3000_devgive(FAR struct cc3000_dev_s *priv)
 {
-  (void)sem_post(&priv->devsem);
+  (void)nxsem_post(&priv->devsem);
 }
 
 /****************************************************************************
@@ -349,10 +356,10 @@ static int cc3000_wait(FAR struct cc3000_dev_s *priv, sem_t *psem)
 
   /* Wait on first psem to become signaled */
 
-  ret = sem_wait(psem);
+  ret = nxsem_wait(psem);
   if (ret < 0)
     {
-      return -errno;
+      return ret;
     }
 
   /* Then retake the mutual exclusion semaphore */
@@ -422,7 +429,7 @@ static void cc3000_pollnotify(FAR struct cc3000_dev_s *priv, uint32_t type)
         {
           fds->revents |= type;
           ninfo("Report events: %02x\n", fds->revents);
-          sem_post(fds->sem);
+          nxsem_post(fds->sem);
         }
     }
 }
@@ -444,7 +451,7 @@ static void cc3000_notify(FAR struct cc3000_dev_s *priv)
        * is no longer available.
        */
 
-      sem_post(&priv->waitsem);
+      nxsem_post(&priv->waitsem);
     }
 
   /* If there are threads waiting on poll() for CC3000 data to become available,
@@ -478,13 +485,13 @@ static void *select_thread_func(FAR void *arg)
 
   while (1)
     {
-      sem_wait(&priv->selectsem);
+      nxsem_wait(&priv->selectsem);
 
       CHECK_GUARD(priv);
 
       /* Increase the count back by one to be decreased by the original caller */
 
-      sem_post(&priv->selectsem);
+      nxsem_post(&priv->selectsem);
 
       maxFD = -1;
       CC3000_FD_ZERO(&readsds);
@@ -503,13 +510,13 @@ static void *select_thread_func(FAR void *arg)
                   int count;
                   do
                     {
-                      sem_getvalue(&priv->sockets[s].semwait, &count);
+                      nxsem_getvalue(&priv->sockets[s].semwait, &count);
                       if (count < 0)
                         {
                           /* Release the waiting threads */
 
                           waitinfo("Closed Signaled %d\n", count);
-                          sem_post(&priv->sockets[s].semwait);
+                          nxsem_post(&priv->sockets[s].semwait);
                         }
                     }
                   while (count < 0);
@@ -556,23 +563,23 @@ static void *select_thread_func(FAR void *arg)
               if (ret > 0 && CC3000_FD_ISSET(priv->sockets[s].sd, &readsds)) /* and has pending data */
                 {
                   waitinfo("Signaled %d\n", priv->sockets[s].sd);
-                  sem_post(&priv->sockets[s].semwait);                       /* release the waiting thread */
+                  nxsem_post(&priv->sockets[s].semwait);  /* release the waiting thread */
                 }
               else if (ret > 0 && CC3000_FD_ISSET(priv->sockets[s].sd, &exceptsds)) /* or has pending exception */
                 {
                   waitinfo("Signaled %d (exception)\n", priv->sockets[s].sd);
-                  sem_post(&priv->sockets[s].semwait);                       /* release the waiting thread */
+                  nxsem_post(&priv->sockets[s].semwait);  /* release the waiting thread */
                 }
-              else if (priv->sockets[s].received_closed_event)               /* or remote has closed connection and we have now read all of HW buffer. */
+              else if (priv->sockets[s].received_closed_event)  /* or remote has closed connection and we have now read all of HW buffer. */
                 {
                   waitinfo("Signaled %d (closed & empty)\n", priv->sockets[s].sd);
                   priv->sockets[s].emptied_and_remotely_closed = true;
-                  sem_post(&priv->sockets[s].semwait);                       /* release the waiting thread */
+                  nxsem_post(&priv->sockets[s].semwait);  /* release the waiting thread */
                 }
             }
         }
 
-      if (priv->accepting_socket.acc.sd != FREE_SLOT)                        /* If accept polling in needed */
+      if (priv->accepting_socket.acc.sd != FREE_SLOT) /* If accept polling in needed */
         {
           if (priv->accepting_socket.acc.sd == CLOSE_SLOT)
             {
@@ -581,15 +588,15 @@ static void *select_thread_func(FAR void *arg)
             else
             {
               ret = cc3000_do_accept(priv->accepting_socket.acc.sd,              /* Send the select command on non blocking */
-                                     &priv->accepting_socket.addr,               /* Set up in ioctl */
+                                     &priv->accepting_socket.addr, /* Set up in ioctl */
                                      &priv->accepting_socket.addrlen);
             }
 
-          if (ret != CC3000_SOC_IN_PROGRESS)                                 /* Not waiting => error or accepted */
+          if (ret != CC3000_SOC_IN_PROGRESS)  /* Not waiting => error or accepted */
             {
               priv->accepting_socket.acc.sd = FREE_SLOT;
               priv->accepting_socket.acc.status = ret;
-              sem_post(&priv->accepting_socket.acc.semwait);                 /* Release the waiting thread */
+              nxsem_post(&priv->accepting_socket.acc.semwait); /* Release the waiting thread */
             }
         }
     }
@@ -610,7 +617,7 @@ static void *cc3000_worker(FAR void *arg)
 
   /* We have started, release our creator */
 
-  sem_post(&priv->readysem);
+  nxsem_post(&priv->readysem);
   while (1)
     {
       PROBE(0, 1);
@@ -629,14 +636,14 @@ static void *cc3000_worker(FAR void *arg)
               /* Signal the device has interrupted after power up */
 
               priv->state = eSPI_STATE_INITIALIZED;
-              sem_post(&priv->readysem);
+              nxsem_post(&priv->readysem);
               break;
 
             case eSPI_STATE_WRITE_WAIT_IRQ:
               /* Signal the device has interrupted after Chip Select During a write operation */
 
               priv->state = eSPI_STATE_WRITE_PROCEED;
-              sem_post(&priv->readysem);
+              nxsem_post(&priv->readysem);
               break;
 
             case eSPI_STATE_WRITE_DONE:  /* IRQ post a write => Solicited */
@@ -696,8 +703,9 @@ static void *cc3000_worker(FAR void *arg)
                     priv->state = eSPI_STATE_READ_READY;
                     priv->rx_buffer.len = data_to_recv;
 
-                    ret = mq_send(priv->queue, (FAR const char *)&priv->rx_buffer,
-                                  sizeof(priv->rx_buffer), 1);
+                    ret = nxmq_send(priv->queue,
+                                    (FAR const char *)&priv->rx_buffer,
+                                    sizeof(priv->rx_buffer), 1);
                     DEBUGASSERT(ret >= 0);
                     UNUSED(ret);
 
@@ -710,14 +718,14 @@ static void *cc3000_worker(FAR void *arg)
                     cc3000_devgive(priv);
 
                     ninfo("Wait On Completion\n");
-                    sem_wait(priv->wrkwaitsem);
+                    nxsem_wait(priv->wrkwaitsem);
                     ninfo("Completed S:%d irq :%d\n",
                           priv->state, priv->config->irq_read(priv->config));
 
-                    sem_getvalue(&priv->irqsem, &count);
+                    nxsem_getvalue(&priv->irqsem, &count);
                     if (priv->config->irq_read(priv->config) && count == 0)
                       {
-                        sem_post(&priv->irqsem);
+                        nxsem_post(&priv->irqsem);
                       }
 
                     if (priv->state == eSPI_STATE_READ_READY)
@@ -755,7 +763,7 @@ static int cc3000_interrupt(int irq, FAR void *context, FAR void *arg)
   /* Run the worker thread */
 
   PROBE(1, 0);
-  sem_post(&priv->irqsem);
+  nxsem_post(&priv->irqsem);
   PROBE(1, 1);
 
   /* Clear any pending interrupts and return success */
@@ -816,22 +824,22 @@ static int cc3000_open(FAR struct file *filep)
     {
       /* Initialize semaphores */
 
-      sem_init(&priv->waitsem, 0, 0);  /* Initialize event wait semaphore */
-      sem_init(&priv->irqsem, 0, 0);   /* Initialize IRQ Ready semaphore */
-      sem_init(&priv->readysem, 0, 0); /* Initialize Device Ready semaphore */
+      nxsem_init(&priv->waitsem, 0, 0);  /* Initialize event wait semaphore */
+      nxsem_init(&priv->irqsem, 0, 0);   /* Initialize IRQ Ready semaphore */
+      nxsem_init(&priv->readysem, 0, 0); /* Initialize Device Ready semaphore */
 
       /* These semaphores are all used for signaling and, hence, should
        * not have priority inheritance enabled.
        */
 
-      sem_setprotocol(&priv->waitsem, SEM_PRIO_NONE);
-      sem_setprotocol(&priv->irqsem, SEM_PRIO_NONE);
-      sem_setprotocol(&priv->readysem, SEM_PRIO_NONE);
+      nxsem_setprotocol(&priv->waitsem, SEM_PRIO_NONE);
+      nxsem_setprotocol(&priv->irqsem, SEM_PRIO_NONE);
+      nxsem_setprotocol(&priv->readysem, SEM_PRIO_NONE);
 
 #ifdef CONFIG_CC3000_MT
       priv->accepting_socket.acc.sd = FREE_SLOT;
-      sem_init(&priv->accepting_socket.acc.semwait, 0, 0);
-      sem_setprotocol(&priv->accepting_socket.acc.semwait, SEM_PRIO_NONE);
+      nxsem_init(&priv->accepting_socket.acc.semwait, 0, 0);
+      nxsem_setprotocol(&priv->accepting_socket.acc.semwait, SEM_PRIO_NONE);
 
       for (s = 0; s < CONFIG_WL_MAX_SOCKETS; s++)
         {
@@ -839,8 +847,8 @@ static int cc3000_open(FAR struct file *filep)
           priv->sockets[s].received_closed_event = false;
           priv->sockets[s].emptied_and_remotely_closed = false;
 
-          sem_init(&priv->sockets[s].semwait, 0, 0);
-          sem_setprotocol(&priv->sockets[s].semwait, SEM_PRIO_NONE);
+          nxsem_init(&priv->sockets[s].semwait, 0, 0);
+          nxsem_setprotocol(&priv->sockets[s].semwait, SEM_PRIO_NONE);
         }
 #endif
 
@@ -889,8 +897,8 @@ static int cc3000_open(FAR struct file *filep)
       param.sched_priority = CONFIG_CC3000_SELECT_THREAD_PRIORITY;
       pthread_attr_setschedparam(&tattr, &param);
 
-      sem_init(&priv->selectsem, 0, 0);
-      sem_setprotocol(&priv->selectsem, SEM_PRIO_NONE);
+      nxsem_init(&priv->selectsem, 0, 0);
+      nxsem_setprotocol(&priv->selectsem, SEM_PRIO_NONE);
 
       ret = pthread_create(&priv->selecttid, &tattr, select_thread_func,
                            (pthread_addr_t)priv);
@@ -935,7 +943,7 @@ errout_select_cancel:
   priv->selecttid = -1;
   pthread_cancel(threadid);
   pthread_join(threadid, NULL);
-  sem_destroy(&priv->selectsem);
+  nxsem_destroy(&priv->selectsem);
 
 errout_worker_cancel:
   threadid = priv->workertid;
@@ -949,18 +957,18 @@ errout_mq_close:
 
 errout_sem_destroy:
 #ifdef CONFIG_CC3000_MT
-  sem_destroy(&priv->accepting_socket.acc.semwait);
+  nxsem_destroy(&priv->accepting_socket.acc.semwait);
 
   for (s = 0; s < CONFIG_WL_MAX_SOCKETS; s++)
     {
       priv->sockets[s].sd = FREE_SLOT;
-      sem_destroy(&priv->sockets[s].semwait);
+      nxsem_destroy(&priv->sockets[s].semwait);
     }
 #endif
 
-  sem_destroy(&priv->waitsem);
-  sem_destroy(&priv->irqsem);
-  sem_destroy(&priv->readysem);
+  nxsem_destroy(&priv->waitsem);
+  nxsem_destroy(&priv->irqsem);
+  nxsem_destroy(&priv->readysem);
 
 out_with_sem:
   cc3000_devgive(priv);
@@ -1010,7 +1018,7 @@ static int cc3000_close(FAR struct file *filep)
       priv->selecttid = -1;
       pthread_cancel(id);
       pthread_join(id, NULL);
-      sem_destroy(&priv->selectsem);
+      nxsem_destroy(&priv->selectsem);
 
       priv->config->irq_enable(priv->config, false);
       priv->config->irq_clear(priv->config);
@@ -1028,18 +1036,18 @@ static int cc3000_close(FAR struct file *filep)
       priv->rx_buffer.pbuffer = 0;
 
 #ifdef CONFIG_CC3000_MT
-      sem_destroy(&priv->accepting_socket.acc.semwait);
+      nxsem_destroy(&priv->accepting_socket.acc.semwait);
 
       for (s = 0; s < CONFIG_WL_MAX_SOCKETS; s++)
         {
           priv->sockets[s].sd = FREE_SLOT;
-          sem_destroy(&priv->sockets[s].semwait);
+          nxsem_destroy(&priv->sockets[s].semwait);
         }
 #endif
 
-      sem_destroy(&priv->waitsem);
-      sem_destroy(&priv->irqsem);
-      sem_destroy(&priv->readysem);
+      nxsem_destroy(&priv->waitsem);
+      nxsem_destroy(&priv->irqsem);
+      nxsem_destroy(&priv->readysem);
     }
 
   cc3000_devgive(priv);
@@ -1118,7 +1126,7 @@ static ssize_t cc3000_read(FAR struct file *filep, FAR char *buffer, size_t len)
        */
 
       ninfo("Waiting..\n");
-      ret = sem_wait(&priv->waitsem);
+      ret = nxsem_wait(&priv->waitsem);
       priv->nwaiters--;
       sched_unlock();
 
@@ -1137,19 +1145,17 @@ static ssize_t cc3000_read(FAR struct file *filep, FAR char *buffer, size_t len)
 
       if (ret < 0)
         {
-          /* No.. One of the two sem_wait's failed. */
-
-          int errval = errno;
+          /* No.. One of the two nxsem_wait's failed. */
 
           /* Were we awakened by a signal?  Did we read anything before
            * we received the signal?
            */
 
-          if (errval != EINTR || nread  >= 0)
+          if (ret != -EINTR || nread  >= 0)
             {
               /* Yes.. return the error. */
 
-              nread = -errval;
+              nread = ret;
             }
 
           /* Break out to return what we have.  Note, we can't exactly
@@ -1183,7 +1189,7 @@ errout_without_sem:
 }
 
 /****************************************************************************
- * Name:cc3000_write
+ * Name: cc3000_write
  *
  * Bit of non standard buffer management ahead
  * The buffer is memory allocated in the user space with space for the spi
@@ -1261,9 +1267,9 @@ static ssize_t cc3000_write(FAR struct file *filep, FAR const char *usrbuffer, s
   if (priv->state  == eSPI_STATE_INITIALIZED)
     {
       cc3000_lock_and_select(priv->spi); /* Assert CS */
-      usleep(55);
+      nxsig_usleep(55);
       SPI_SNDBLOCK(priv->spi, buffer, 4);
-      usleep(55);
+      nxsig_usleep(55);
       SPI_SNDBLOCK(priv->spi, buffer+4, tx_len-4);
     }
   else
@@ -1279,8 +1285,8 @@ static ssize_t cc3000_write(FAR struct file *filep, FAR const char *usrbuffer, s
           /* This should only happen if the wait was canceled by an signal */
 
           cc3000_deselect_and_unlock(priv->spi);
-          ninfo("sem_wait: %d\n", errno);
-          DEBUGASSERT(errno == EINTR);
+          ninfo("nxsem_wait: %d\n", ret);
+          DEBUGASSERT(ret == -EINTR);
           nwritten = ret;
           goto errout_without_sem;
         }
@@ -1300,7 +1306,7 @@ errout_without_sem:
 }
 
 /****************************************************************************
- * Name:cc3000_ioctl
+ * Name: cc3000_ioctl
  ****************************************************************************/
 
 static int cc3000_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
@@ -1551,7 +1557,7 @@ int cc3000_register(FAR struct spi_dev_s *spi,
 
   priv->rx_buffer_max_len = config->max_rx_size;
 
-  sem_init(&priv->devsem,  0, 1);    /* Initialize device structure semaphore */
+  nxsem_init(&priv->devsem,  0, 1);    /* Initialize device structure semaphore */
 
   (void)snprintf(semname, SEM_NAMELEN, SEM_FORMAT, minor);
   priv->wrkwaitsem = sem_open(semname, O_CREAT, 0, 0); /* Initialize  Worker Wait semaphore */
@@ -1602,7 +1608,7 @@ int cc3000_register(FAR struct spi_dev_s *spi,
   return OK;
 
 errout_with_priv:
-  sem_destroy(&priv->devsem);
+  nxsem_destroy(&priv->devsem);
   sem_close(priv->wrkwaitsem);
   sem_unlink(semname);
 
@@ -1642,9 +1648,9 @@ static int cc3000_wait_data(FAR struct cc3000_dev_s *priv, int sockfd)
         {
           sched_lock();
           cc3000_devgive(priv);
-          sem_post(&priv->selectsem);           /* Wake select thread if need be */
-          sem_wait(&priv->sockets[s].semwait);  /* Wait caller on select to finish */
-          sem_wait(&priv->selectsem);           /* Sleep select thread */
+          nxsem_post(&priv->selectsem);          /* Wake select thread if need be */
+          nxsem_wait(&priv->sockets[s].semwait); /* Wait caller on select to finish */
+          nxsem_wait(&priv->selectsem);          /* Sleep select thread */
           cc3000_devtake(priv);
           sched_unlock();
 
@@ -1690,9 +1696,9 @@ static int cc3000_accept_socket(FAR struct cc3000_dev_s *priv, int sd, struct so
 
   sched_lock();
   cc3000_devgive(priv);
-  sem_post(&priv->selectsem);                    /* Wake select thread if need be */
-  sem_wait(&priv->accepting_socket.acc.semwait); /* Wait caller on select to finish */
-  sem_wait(&priv->selectsem);                    /* Sleep the Thread */
+  nxsem_post(&priv->selectsem);                    /* Wake select thread if need be */
+  nxsem_wait(&priv->accepting_socket.acc.semwait); /* Wait caller on select to finish */
+  nxsem_wait(&priv->selectsem);                    /* Sleep the Thread */
   cc3000_devtake(priv);
   sched_unlock();
 
@@ -1799,9 +1805,9 @@ static int cc3000_remove_socket(FAR struct cc3000_dev_s *priv, int sd)
     {
       sched_lock();
       cc3000_devgive(priv);
-      sem_post(&priv->selectsem);                    /* Wake select thread if need be */
-      sem_wait(ps);
-      sem_wait(&priv->selectsem);                    /* Sleep the Thread */
+      nxsem_post(&priv->selectsem);  /* Wake select thread if need be */
+      nxsem_wait(ps);
+      nxsem_wait(&priv->selectsem);  /* Sleep the Thread */
       cc3000_devtake(priv);
       sched_unlock();
     }

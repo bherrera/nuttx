@@ -141,7 +141,7 @@ static inline bool send_timeout(FAR struct sixlowpan_send_s *sinfo)
  *   This function is called from the interrupt level to perform the actual
  *   send operation when polled by the lower, device interfacing layer.
  *
- * Input Parmeters
+ * Input Parameters:
  *   dev   - The structure of the network driver that caused the interrupt
  *   conn  - The connection structure associated with the socket
  *   flags - Set of events describing why the callback was invoked
@@ -228,7 +228,7 @@ end_wait:
 
   /* Wake up the waiting thread */
 
-  sem_post(&sinfo->s_waitsem);
+  nxsem_post(&sinfo->s_waitsem);
   return flags;
 }
 
@@ -281,8 +281,8 @@ int sixlowpan_send(FAR struct net_driver_s *dev,
 
   /* Initialize the send state structure */
 
-  sem_init(&sinfo.s_waitsem, 0, 0);
-  (void)sem_setprotocol(&sinfo.s_waitsem, SEM_PRIO_NONE);
+  nxsem_init(&sinfo.s_waitsem, 0, 0);
+  (void)nxsem_setprotocol(&sinfo.s_waitsem, SEM_PRIO_NONE);
 
   sinfo.s_result  = -EBUSY;
   sinfo.s_timeout = timeout;
@@ -336,7 +336,7 @@ int sixlowpan_send(FAR struct net_driver_s *dev,
         }
     }
 
-  sem_destroy(&sinfo.s_waitsem);
+  nxsem_destroy(&sinfo.s_waitsem);
   net_unlock();
 
   return (sinfo.s_result < 0 ? sinfo.s_result : len);

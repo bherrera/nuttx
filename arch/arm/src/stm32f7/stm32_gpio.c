@@ -1,8 +1,9 @@
 /****************************************************************************
  * arch/arm/src/stm32f7/stm32_gpio.c
  *
- *   Copyright (C) 2015 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2015, 2017 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
+ *           Bob Feretich <bob.feretich@rafresearch.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -57,7 +58,8 @@
  * families
  */
 
-#if defined(CONFIG_STM32F7_STM32F74XX) || defined(CONFIG_STM32F7_STM32F75XX) \
+#if defined(CONFIG_STM32F7_STM32F72XX) || defined(CONFIG_STM32F7_STM32F73XX) \
+  || defined(CONFIG_STM32F7_STM32F74XX) || defined(CONFIG_STM32F7_STM32F75XX) \
   || defined(CONFIG_STM32F7_STM32F76XX) || defined(CONFIG_STM32F7_STM32F77XX)
 
 /****************************************************************************
@@ -134,7 +136,7 @@ void stm32_gpioinit(void)
  *   function, it must be unconfigured with stm32_unconfiggpio() with
  *   the same cfgset first before it can be set to non-alternative function.
  *
- * Returns:
+ * Returned Value:
  *   OK on success
  *   A negated errono value on invalid port, or when pin is locked as ALT
  *   function.
@@ -357,7 +359,7 @@ int stm32_configgpio(uint32_t cfgset)
  *   operate in PWM mode could produce excessive on-board currents and trigger
  *   over-current/alarm function.
  *
- * Returns:
+ * Returned Value:
  *  OK on success
  *  A negated errno value on invalid port
  *

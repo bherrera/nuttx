@@ -163,7 +163,7 @@ the SD slots can be enabled with the following settings:
     CONFIG_MMCSD=y                        : Enable MMC/SD support
     CONFIG_MMSCD_NSLOTS=1                 : One slot per driver instance
     CONFIG_MMCSD_MULTIBLOCK_DISABLE=y     : (REVISIT)
-    CONFIG_MMCSD_HAVECARDDETECT=y         : Supports card-detect PIOs
+    CONFIG_MMCSD_HAVE_CARDDETECT=y         : Supports card-detect PIOs
     CONFIG_MMCSD_MMCSUPPORT=n             : Interferes with some SD cards
     CONFIG_MMCSD_SPI=n                    : No SPI-based MMC/SD support
     CONFIG_MMCSD_SDIO=y                   : SDIO-based MMC/SD support
@@ -401,7 +401,7 @@ Selecting the GMAC peripheral
     CONFIG_NET_UDP=y                     : Enable UDP networking
     CONFIG_NET_BROADCAST=y               : Support UDP broadcase packets
     CONFIG_NET_ICMP=y                    : Enable ICMP networking
-    CONFIG_NET_ICMP_PING=y               : Needed for NSH ping command
+    CONFIG_NET_ICMP_SOCKET=y             : Needed for NSH ping command
                                          : Defaults should be okay for other options
   Device drivers -> Network Device/PHY Support
     CONFIG_NETDEVICES=y                  : Enabled PHY selection

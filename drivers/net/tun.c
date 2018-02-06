@@ -229,16 +229,21 @@ static const struct file_operations g_tun_file_ops =
 
 static void tundev_lock(FAR struct tun_driver_s *tun)
 {
-  /* Take the semaphore (perhaps waiting) */
+  int ret;
 
-  while (sem_wait(&tun->waitsem) != 0)
+  do
     {
-      /* The only case that an error should occur here is if
-       * the wait was awakened by a signal.
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&tun->waitsem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
        */
 
-      ASSERT(errno == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -247,7 +252,7 @@ static void tundev_lock(FAR struct tun_driver_s *tun)
 
 static void tundev_unlock(FAR struct tun_driver_s *tun)
 {
-  sem_post(&tun->waitsem);
+  nxsem_post(&tun->waitsem);
 }
 
 /****************************************************************************
@@ -256,16 +261,21 @@ static void tundev_unlock(FAR struct tun_driver_s *tun)
 
 static void tun_lock(FAR struct tun_device_s *priv)
 {
-  /* Take the semaphore (perhaps waiting) */
+  int ret;
 
-  while (sem_wait(&priv->waitsem) != 0)
+  do
     {
-      /* The only case that an error should occur here is if
-       * the wait was awakened by a signal.
+      /* Take the semaphore (perhaps waiting) */
+
+      ret = nxsem_wait(&priv->waitsem);
+
+      /* The only case that an error should occur here is if the wait was
+       * awakened by a signal.
        */
 
-      ASSERT(errno == EINTR);
+      DEBUGASSERT(ret == OK || ret == -EINTR);
     }
+  while (ret == -EINTR);
 }
 
 /****************************************************************************
@@ -274,7 +284,7 @@ static void tun_lock(FAR struct tun_device_s *priv)
 
 static void tun_unlock(FAR struct tun_device_s *priv)
 {
-  sem_post(&priv->waitsem);
+  nxsem_post(&priv->waitsem);
 }
 
 /****************************************************************************
@@ -296,7 +306,7 @@ static void tun_pollnotify(FAR struct tun_device_s *priv, pollevent_t eventset)
   if (eventset != 0)
     {
       fds->revents |= eventset;
-      sem_post(fds->sem);
+      nxsem_post(fds->sem);
     }
 }
 #else
@@ -335,7 +345,7 @@ static int tun_fd_transmit(FAR struct tun_device_s *priv)
   if (priv->read_wait)
     {
       priv->read_wait = false;
-      sem_post(&priv->read_wait_sem);
+      nxsem_post(&priv->read_wait_sem);
     }
 
   tun_pollnotify(priv, POLLIN);
@@ -872,16 +882,16 @@ static int tun_dev_init(FAR struct tun_device_s *priv, FAR struct file *filep,
 
   /* Initialize the mutual exlcusion and wait semaphore */
 
-  sem_init(&priv->waitsem, 0, 1);
-  sem_init(&priv->read_wait_sem, 0, 0);
+  nxsem_init(&priv->waitsem, 0, 1);
+  nxsem_init(&priv->read_wait_sem, 0, 0);
 
   /* The wait semaphore is used for signaling and, hence, should not have
    * priority inheritance enabled.
    */
 
-  sem_setprotocol(&priv->read_wait_sem, SEM_PRIO_NONE);
+  nxsem_setprotocol(&priv->read_wait_sem, SEM_PRIO_NONE);
 
-  /* Create a watchdog for timing polling for and timing of transmisstions */
+  /* Create a watchdog for timing polling for and timing of transmissions */
 
   priv->txpoll        = wd_create();  /* Create periodic poll timer */
 
@@ -904,8 +914,8 @@ static int tun_dev_init(FAR struct tun_device_s *priv, FAR struct file *filep,
   ret = netdev_register(&priv->dev, NET_LL_TUN);
   if (ret != OK)
     {
-      sem_destroy(&priv->waitsem);
-      sem_destroy(&priv->read_wait_sem);
+      nxsem_destroy(&priv->waitsem);
+      nxsem_destroy(&priv->read_wait_sem);
       return ret;
     }
 
@@ -929,8 +939,8 @@ static int tun_dev_uninit(FAR struct tun_device_s *priv)
 
   (void)netdev_unregister(&priv->dev);
 
-  sem_destroy(&priv->waitsem);
-  sem_destroy(&priv->read_wait_sem);
+  nxsem_destroy(&priv->waitsem);
+  nxsem_destroy(&priv->read_wait_sem);
 
   return OK;
 }
@@ -1076,7 +1086,7 @@ static ssize_t tun_read(FAR struct file *filep, FAR char *buffer,
 
       priv->read_wait = true;
       tun_unlock(priv);
-      sem_wait(&priv->read_wait_sem);
+      (void)nxsem_wait(&priv->read_wait_sem);
       tun_lock(priv);
     }
 
@@ -1272,7 +1282,7 @@ static int tun_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 
 int tun_initialize(void)
 {
-  sem_init(&g_tun.waitsem, 0, 1);
+  nxsem_init(&g_tun.waitsem, 0, 1);
 
   g_tun.free_tuns = (1 << CONFIG_TUN_NINTERFACES) - 1;
 

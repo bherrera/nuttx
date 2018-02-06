@@ -14,26 +14,6 @@ config NETDEV_LOOPBACK
 		Add support for the local network loopback device, lo.
 
 if NETDEV_LOOPBACK
-
-choice
-	prompt "Work queue"
-	default LOOPBACK_LPWORK if SCHED_LPWORK
-	default LOOPBACK_HPWORK if !SCHED_LPWORK && SCHED_HPWORK
-	depends on SCHED_WORKQUEUE
-	---help---
-		Work queue support is required to use the loopback driver.  If the
-		low priority work queue is available, then it should be used by the
-		loopback driver.
-
-config LOOPBACK_HPWORK
-	bool "High priority"
-	depends on SCHED_HPWORK
-
-config LOOPBACK_LPWORK
-	bool "Low priority"
-	depends on SCHED_LPWORK
-
-endchoice # Work queue
 endif # NETDEV_LOOPBACK
 
 config NETDEV_TELNET
@@ -60,6 +40,14 @@ config TELNET_DUMPBUFFER
 	bool "Dump Telnet buffers"
 	default n
 	depends on DEBUG_NET
+
+config TELNET_CHARACTER_MODE
+	bool "Character mode"
+	default n
+	---help---
+		The Telnet daemon works in character mode. In this case, the deamon
+		will echo a character which telnet client sent. By default, it works
+		in line mode.
 
 endif # NETDEV_TELNET
 
@@ -204,14 +192,6 @@ endchoice # Work queue
 
 endif # NET_DM90x0
 
-config NET_CS89x0
-	bool "CS89x0 support"
-	default n
-	depends on EXPERIMENTAL
-	select ARCH_HAVE_NETDEV_STATISTICS
-	---help---
-		Under construction -- do not use
-
 menuconfig ENC28J60
 	bool "Microchip ENC28J60 support"
 	default n
@@ -227,7 +207,7 @@ if ENC28J60
 config ENC28J60_NINTERFACES
 	int "Number of physical ENC28J60"
 	default 1
-	range 1,1
+	range 1 1
 	---help---
 		Specifies the number of physical ENC28J60
 		devices that will be supported.
@@ -306,7 +286,7 @@ if ENCX24J600
 config ENC28J60_NINTERFACES
 	int "Number of physical ENCX24J600"
 	default 1
-	range 1,1
+	range 1 1
 	---help---
 		Specifies the number of physical ENCX24J600
 		devices that will be supported.

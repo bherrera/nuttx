@@ -1405,6 +1405,11 @@ config ARCH_BOARD_STM32L4_CUSTOM_CLOCKCONFIG
 	---help---
 		Enables special, board-specific STM32 clock configuration.
 
+config STM32L4_HAVE_RTC_SUBSECONDS
+	bool
+	select ARCH_HAVE_RTC_SUBSECONDS
+	default y
+
 choice
 	prompt "RTC clock source"
 	default STM32L4_RTC_LSECLOCK
@@ -3319,8 +3324,7 @@ config STM32L4_ADC3_DMA
 
 config STM32L4_ADC1_OUTPUT_DFSDM
 	bool "ADC1 output to DFSDM"
-	depends on STM32L4_ADC1 && STM32L4_DFSDM1 && (STM32L4_STM32L496XX || \
-		   STM32L4_STM32L451XX || STM32L4_STM32L452XX || STM32L4_STM32L462XX)
+	depends on STM32L4_ADC1 && STM32L4_DFSDM1 && STM32L4_STM32L496XX
 	default n
 	---help---
 		Route ADC1 output directly to DFSDM parallel inputs.
@@ -3657,6 +3661,15 @@ config STM32L4_SERIALBRK_BSDCOMPAT
 		on because the SW starts the break and then the HW automatically clears
 		the break. This makes it is difficult to sent a long break.
 
+if PM
+config PM_SERIAL_ACTIVITY
+	int "PM serial activity"
+	default 10
+	---help---
+		PM activity reported to power management logic on every serial
+		interrupt.
+endif
+
 endmenu # U[S]ART Configuration
 
 menu "SPI Configuration"
@@ -3710,11 +3723,6 @@ config STM32L4_I2CTIMEOTICKS
 	int "Timeout for Done and Stop (ticks)"
 	default 500
 	depends on STM32L4_I2C && !STM32L4_I2C_DYNTIMEO
-
-config STM32L4_I2C_DUTY16_9
-	bool "Frequency with Tlow/Thigh = 16/9 "
-	default n
-	depends on STM32L4_I2C
 
 endmenu
 
@@ -3809,7 +3817,7 @@ config STM32L4_CAN_REGDEBUG
 endmenu
 
 menu "QEncoder Driver"
-	depends on QENCODER
+	depends on SENSORS_QENCODER
 	depends on STM32L4_TIM1 || STM32L4_TIM2 || STM32L4_TIM3 || STM32L4_TIM4 || STM32L4_TIM5 || STM32L4_TIM8
 
 config STM32L4_TIM1_QE
